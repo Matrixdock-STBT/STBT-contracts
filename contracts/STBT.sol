@@ -110,7 +110,6 @@ contract UpgradeableSTBT is Proxy {
     }
 }
 
-// The Owner of this contract must be a multisig contracts built with gnosis-safe
 contract STBT is Ownable, ISTBT {
     // all the following three roles are contracts of governance/TimelockController.sol
     address public issuer;
@@ -256,7 +255,7 @@ contract STBT is Ownable, ISTBT {
         // unchecked {
         //     result = _shares * totalSupply / totalShares; // divide-by-zero will return zero
         // }
-        return totalSupply == 0 ? 0 : _shares * totalSupply / totalShares;
+        return totalShares == 0 ? 0 : _shares * totalSupply / totalShares;
     }
 
     function _transferWithCheck(address _sender, address _recipient, uint256 _amount) internal {
