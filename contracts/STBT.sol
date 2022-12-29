@@ -17,14 +17,14 @@ contract StbtTimelockController is TimelockController {
         bytes4[] memory selectors,
         uint256[] memory delays
     ) TimelockController(0/*minDelay*/, proposers, executors, admin) {
-        require(selectors.length == delays.length, 'SELECTORS_DELAYS_LEN_NOT_MATCH');
+        require(selectors.length == delays.length, 'TimelockController: SELECTORS_DELAYS_LEN_NOT_MATCH');
         for (uint256 i = 0; i < selectors.length; i++) {
             delayMap[selectors[i]] = delays[i];
         }
     }
 
     function updateDelay(uint256 /*newDelay*/) external override pure {
-        revert('UNSUPPORTED');
+        revert('TimelockController: UNSUPPORTED');
     }
 
     function scheduleBatch(
@@ -35,7 +35,7 @@ contract StbtTimelockController is TimelockController {
         bytes32 /*salt*/,
         uint256 /*delay*/
     ) public override pure {
-        revert('UNSUPPORTED');
+        revert('TimelockController: UNSUPPORTED');
     }
 
     function schedule(
@@ -49,7 +49,7 @@ contract StbtTimelockController is TimelockController {
 
         bytes4 sel = bytes4(data[0:4]);
         uint256 delay = delayMap[sel];
-        require(delay > 0, 'UNKNOWN_SELECTOR');
+        require(delay > 0, 'TimelockController: UNKNOWN_SELECTOR');
 
         super.schedule(target, value, data, predecessor, salt, delay);
     }
@@ -116,7 +116,7 @@ contract UpgradeableSTBT is Proxy {
     }
 
     function resetImplementation(address _impl) external {
-        require(msg.sender == owner, "NOT_OWNER");
+        require(msg.sender == owner, "STBT: NOT_OWNER");
         implementation = _impl;
     }
 
@@ -166,17 +166,17 @@ contract STBT is Ownable, ISTBT {
         uint256 postRebaseTokenAmount, uint256 sharesAmount);
 
     modifier onlyIssuer() {
-        require(msg.sender == issuer, 'NOT_ISSUER');
+        require(msg.sender == issuer, 'STBT: NOT_ISSUER');
         _;
     }
 
     modifier onlyController() {
-        require(msg.sender == controller, 'NOT_CONTROLLER');
+        require(msg.sender == controller, 'STBT: NOT_CONTROLLER');
         _;
     }
 
     modifier onlyModerator() {
-        require(msg.sender == moderator, 'NOT_MODERATOR');
+        require(msg.sender == moderator, 'STBT: NOT_MODERATOR');
         _;
     }
 
@@ -236,7 +236,7 @@ contract STBT is Ownable, ISTBT {
 
     function transferFrom(address _sender, address _recipient, uint256 _amount) public returns (bool) {
         uint256 currentAllowance = allowances[_sender][msg.sender];
-        require(currentAllowance >= _amount, "TRANSFER_AMOUNT_EXCEEDS_ALLOWANCE");
+        require(currentAllowance >= _amount, "STBT: TRANSFER_AMOUNT_EXCEEDS_ALLOWANCE");
 
         _transferWithCheck(_sender, _recipient, _amount);
         _approve(_sender, msg.sender, currentAllowance - _amount);
@@ -250,7 +250,7 @@ contract STBT is Ownable, ISTBT {
 
     function decreaseAllowance(address _spender, uint256 _subtractedValue) public returns (bool) {
         uint256 currentAllowance = allowances[msg.sender][_spender];
-        require(currentAllowance >= _subtractedValue, "DECREASED_ALLOWANCE_BELOW_ZERO");
+        require(currentAllowance >= _subtractedValue, "STBT: DECREASED_ALLOWANCE_BELOW_ZERO");
         _approve(msg.sender, _spender, currentAllowance - _subtractedValue);
         return true;
     }
@@ -281,13 +281,13 @@ contract STBT is Ownable, ISTBT {
 
     function _checkSendPermission(address _sender) private view {
         Permission memory permTx = permissions[_sender];
-        require(permTx.sendAllowed, 'NO_SEND_PERMISSION');
-        require(permTx.expiryTime == 0 || permTx.expiryTime > block.timestamp, 'SEND_PERMISSION_EXPIRED');
+        require(permTx.sendAllowed, 'STBT: NO_SEND_PERMISSION');
+        require(permTx.expiryTime == 0 || permTx.expiryTime > block.timestamp, 'STBT: SEND_PERMISSION_EXPIRED');
     }
     function _checkReceivePermission(address _recipient) private view {
         Permission memory permRx = permissions[_recipient];
-        require(permRx.receiveAllowed, 'NO_RECEIVE_PERMISSION');
-        require(permRx.expiryTime == 0 || permRx.expiryTime > block.timestamp, 'RECEIVE_PERMISSION_EXPIRED');
+        require(permRx.receiveAllowed, 'STBT: NO_RECEIVE_PERMISSION');
+        require(permRx.expiryTime == 0 || permRx.expiryTime > block.timestamp, 'STBT: RECEIVE_PERMISSION_EXPIRED');
     }
 
     function _transfer(address _sender, address _recipient, uint256 _amount) internal {
@@ -303,18 +303,18 @@ contract STBT is Ownable, ISTBT {
     }
 
     function _transferShares(address _sender, address _recipient, uint256 _shares) internal {
-        require(_sender != address(0), "TRANSFER_FROM_THE_ZERO_ADDRESS");
-        require(_recipient != address(0), "TRANSFER_TO_THE_ZERO_ADDRESS");
+        require(_sender != address(0), "STBT: TRANSFER_FROM_THE_ZERO_ADDRESS");
+        require(_recipient != address(0), "STBT: TRANSFER_TO_THE_ZERO_ADDRESS");
 
         uint256 currentSenderShares = shares[_sender];
-        require(_shares <= currentSenderShares, "TRANSFER_AMOUNT_EXCEEDS_BALANCE");
+        require(_shares <= currentSenderShares, "STBT: TRANSFER_AMOUNT_EXCEEDS_BALANCE");
 
         shares[_sender] = currentSenderShares - _shares;
         shares[_recipient] = shares[_recipient] + _shares;
     }
 
     function _mintSharesWithCheck(address _recipient, uint256 _shares) internal returns (uint256 newTotalShares) {
-        require(_recipient != address(0), "MINT_TO_THE_ZERO_ADDRESS");
+        require(_recipient != address(0), "STBT: MINT_TO_THE_ZERO_ADDRESS");
         _checkReceivePermission(_recipient);
 
         totalShares += _shares;
@@ -329,10 +329,10 @@ contract STBT is Ownable, ISTBT {
     }
 
     function _burnShares(address _account, uint256 _shares) internal returns (uint256 newTotalShares) {
-        require(_account != address(0), "BURN_FROM_THE_ZERO_ADDRESS");
+        require(_account != address(0), "STBT: BURN_FROM_THE_ZERO_ADDRESS");
 
         uint256 accountShares = shares[_account];
-        require(_shares <= accountShares, "BURN_AMOUNT_EXCEEDS_BALANCE");
+        require(_shares <= accountShares, "STBT: BURN_AMOUNT_EXCEEDS_BALANCE");
 
         uint256 preRebaseTokenAmount = getAmountByShares(_shares);
 
@@ -357,7 +357,7 @@ contract STBT is Ownable, ISTBT {
             newTotalSupply = oldTotalSupply - uint(-_distributedInterest);
         }
         totalSupply = newTotalSupply;
-        require(lastDistributeTime + minDistributeInterval < block.timestamp, 'MIN_DISTRIBUTE_INTERVAL_VIOLATED');
+        require(lastDistributeTime + minDistributeInterval < block.timestamp, 'STBT: MIN_DISTRIBUTE_INTERVAL_VIOLATED');
         emit InterestsDistributed(_distributedInterest, newTotalSupply, block.timestamp, block.timestamp - lastDistributeTime);
         lastDistributeTime = uint64(block.timestamp);
     }
@@ -464,8 +464,8 @@ contract STBT is Ownable, ISTBT {
     }
 
     function setDocument(bytes32 _name, string calldata _uri, bytes32 _documentHash) external onlyOwner {
-        require(_name != bytes32(0), "INVALID_DOC_NAME");
-        require(bytes(_uri).length > 0, "INVALID_URL");
+        require(_name != bytes32(0), "STBT: INVALID_DOC_NAME");
+        require(bytes(_uri).length > 0, "STBT: INVALID_URL");
         if (documents[_name].lastModified == uint256(0)) {
             docNames.push(_name);
             docIndexes[_name] = docNames.length;
@@ -475,7 +475,7 @@ contract STBT is Ownable, ISTBT {
     }
 
     function removeDocument(bytes32 _name) external onlyOwner {
-        require(documents[_name].lastModified != uint256(0), "DOC_NOT_EXIST");
+        require(documents[_name].lastModified != uint256(0), "STBT: DOC_NOT_EXIST");
         uint256 index = docIndexes[_name] - 1;
         if (index != docNames.length - 1) {
             docNames[index] = docNames[docNames.length - 1];
