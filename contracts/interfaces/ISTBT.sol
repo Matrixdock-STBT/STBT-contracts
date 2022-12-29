@@ -79,7 +79,7 @@ interface ISTBT is IERC20, IERC20Metadata, IERC1594, IERC1643, IERC1644 {
     function setMaxDistributeRatio(uint64 ratio) external;
     function setPermission(address addr, Permission calldata permission) external;
 
-    function distributeInterests(uint256 _distributedInterest) external;
+    function distributeInterests(int256 _distributedInterest) external;
 
     function increaseAllowance(address _spender, uint256 _addedValue) external returns (bool);
     function decreaseAllowance(address _spender, uint256 _subtractedValue) external returns (bool);

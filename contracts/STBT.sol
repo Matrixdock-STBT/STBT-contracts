@@ -24,7 +24,7 @@ contract StbtTimelockController is TimelockController {
     }
 
     function updateDelay(uint256 /*newDelay*/) external override pure {
-        require(false, 'UNSUPPORTED');
+        revert('UNSUPPORTED');
     }
 
     function scheduleBatch(
@@ -35,7 +35,7 @@ contract StbtTimelockController is TimelockController {
         bytes32 /*salt*/,
         uint256 /*delay*/
     ) public override pure {
-        require(false, 'UNSUPPORTED');
+        revert('UNSUPPORTED');
     }
 
     function schedule(
@@ -75,6 +75,21 @@ contract StbtTimelockController is TimelockController {
         cancel(id);
     }
 
+    function _execute(
+        address target,
+        uint256 value,
+        bytes calldata data
+    ) internal override {
+        (bool success, ) = target.call{value: value}(data);
+        if (success == false) {
+            assembly {
+                let ptr := mload(0x40)
+                let size := returndatasize()
+                returndatacopy(ptr, 0, size)
+                revert(ptr, size)
+            }
+        }
+    }
 }
 
 contract UpgradeableSTBT is Proxy {
@@ -145,7 +160,7 @@ contract STBT is Ownable, ISTBT {
     uint8 private constant PermissionRequested = 0x13;
     uint8 private constant RevokedOrBanned = 0x16;
 
-    event InterestsDistributed(uint interest, uint newTotalSupply, uint distributeTime, uint distributeTimeLength);
+    event InterestsDistributed(int interest, uint newTotalSupply, uint distributeTime, uint distributeTimeLength);
     event TransferShares(address indexed from, address indexed to, uint256 sharesValue);
     event SharesBurnt(address indexed account, uint256 preRebaseTokenAmount,
         uint256 postRebaseTokenAmount, uint256 sharesAmount);
@@ -331,10 +346,16 @@ contract STBT is Ownable, ISTBT {
         emit SharesBurnt(_account, preRebaseTokenAmount, postRebaseTokenAmount, _shares);
     }
 
-    function distributeInterests(uint256 _distributedInterest) external onlyIssuer {
+    function distributeInterests(int256 _distributedInterest) external onlyIssuer {
         uint oldTotalSupply = totalSupply;
-        require(oldTotalSupply * maxDistributeRatio >= _distributedInterest * (10 ** 18), 'MAX_DISTRIBUTE_RATIO_EXCEEDED');
-        uint newTotalSupply = oldTotalSupply + _distributedInterest;
+        uint newTotalSupply;
+        if(_distributedInterest > 0) {
+            require(oldTotalSupply * maxDistributeRatio >= uint(_distributedInterest) * (10 ** 18), 'MAX_DISTRIBUTE_RATIO_EXCEEDED');
+            newTotalSupply = oldTotalSupply + uint(_distributedInterest);
+        } else {
+            require(oldTotalSupply * maxDistributeRatio >= uint(-_distributedInterest) * (10 ** 18), 'MAX_DISTRIBUTE_RATIO_EXCEEDED');
+            newTotalSupply = oldTotalSupply - uint(-_distributedInterest);
+        }
         totalSupply = newTotalSupply;
         require(lastDistributeTime + minDistributeInterval < block.timestamp, 'MIN_DISTRIBUTE_INTERVAL_VIOLATED');
         emit InterestsDistributed(_distributedInterest, newTotalSupply, block.timestamp, block.timestamp - lastDistributeTime);
@@ -354,6 +375,7 @@ contract STBT is Ownable, ISTBT {
         _burnShares(_tokenHolder, getSharesByAmount(_value));
         totalSupply -= _value;
         emit ControllerRedemption(msg.sender, _tokenHolder, _value, _data, _operatorData);
+        emit Transfer(_tokenHolder, address(0), _value);
     }
 
     // Transfers
@@ -378,15 +400,17 @@ contract STBT is Ownable, ISTBT {
         if (amount == 0) {
             amount = _value;
             totalSupply = _value;
+            lastDistributeTime = uint64(block.timestamp);
         } else {
             totalSupply += _value;
         }
         _mintSharesWithCheck(_tokenHolder, amount);
         emit Issued(msg.sender, _tokenHolder, _value, _data);
+        emit Transfer(address(0), _tokenHolder, _value);
     }
 
     // Token Redemption
-    function redeem(uint256 _value, bytes calldata _data) external {
+    function redeem(uint256 _value, bytes calldata _data) external onlyIssuer {
         if (_value == 0) {
             return;
         }
@@ -395,7 +419,7 @@ contract STBT is Ownable, ISTBT {
         emit Redeemed(msg.sender, msg.sender, _value, _data);
     }
 
-    function redeemFrom(address _tokenHolder, uint256 _value, bytes calldata _data) external {
+    function redeemFrom(address _tokenHolder, uint256 _value, bytes calldata _data) external onlyIssuer {
         uint256 currentAllowance = allowances[_tokenHolder][msg.sender];
         require(currentAllowance >= _value, "REDEEM_AMOUNT_EXCEEDS_ALLOWANCE");
 
@@ -404,6 +428,7 @@ contract STBT is Ownable, ISTBT {
         emit Redeemed(msg.sender, _tokenHolder, _value, _data);
         _approve(_tokenHolder, msg.sender, currentAllowance - _value);
     }
+
 
     function _checkTransfer(address _sender, address _recipient, uint256 _amount, bytes calldata /*_data*/) internal view returns (bool, uint8, bytes32) {
         Permission memory permTx = permissions[_sender];
