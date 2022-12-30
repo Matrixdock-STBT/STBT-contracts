@@ -350,10 +350,10 @@ contract STBT is Ownable, ISTBT {
         uint oldTotalSupply = totalSupply;
         uint newTotalSupply;
         if(_distributedInterest > 0) {
-            require(oldTotalSupply * maxDistributeRatio >= uint(_distributedInterest) * (10 ** 18), 'MAX_DISTRIBUTE_RATIO_EXCEEDED');
+            require(oldTotalSupply * maxDistributeRatio >= uint(_distributedInterest) * (10 ** 18), 'STBT: MAX_DISTRIBUTE_RATIO_EXCEEDED');
             newTotalSupply = oldTotalSupply + uint(_distributedInterest);
         } else {
-            require(oldTotalSupply * maxDistributeRatio >= uint(-_distributedInterest) * (10 ** 18), 'MAX_DISTRIBUTE_RATIO_EXCEEDED');
+            require(oldTotalSupply * maxDistributeRatio >= uint(-_distributedInterest) * (10 ** 18), 'STBT: MAX_DISTRIBUTE_RATIO_EXCEEDED');
             newTotalSupply = oldTotalSupply - uint(-_distributedInterest);
         }
         totalSupply = newTotalSupply;
@@ -396,15 +396,16 @@ contract STBT is Ownable, ISTBT {
         if (_value == 0) {
             return;
         }
-        uint amount = getSharesByAmount(_value);
-        if (amount == 0) {
-            amount = _value;
+        uint sharesDelta = getSharesByAmount(_value);
+        if (sharesDelta == 0) {
+            sharesDelta = _value;
             totalSupply = _value;
             lastDistributeTime = uint64(block.timestamp);
         } else {
             totalSupply += _value;
         }
-        _mintSharesWithCheck(_tokenHolder, amount);
+        _mintSharesWithCheck(_tokenHolder, sharesDelta);
+        _value = getAmountByShares(sharesDelta);
         emit Issued(msg.sender, _tokenHolder, _value, _data);
         emit Transfer(address(0), _tokenHolder, _value);
     }
@@ -417,15 +418,17 @@ contract STBT is Ownable, ISTBT {
         _burnSharesWithCheck(msg.sender, getSharesByAmount(_value));
         totalSupply -= _value;
         emit Redeemed(msg.sender, msg.sender, _value, _data);
+        emit Transfer(msg.sender, address(0), _value);
     }
 
     function redeemFrom(address _tokenHolder, uint256 _value, bytes calldata _data) external onlyIssuer {
         uint256 currentAllowance = allowances[_tokenHolder][msg.sender];
-        require(currentAllowance >= _value, "REDEEM_AMOUNT_EXCEEDS_ALLOWANCE");
+        require(currentAllowance >= _value, "STBT: REDEEM_AMOUNT_EXCEEDS_ALLOWANCE");
 
         _burnSharesWithCheck(_tokenHolder, getSharesByAmount(_value));
         totalSupply -= _value;
         emit Redeemed(msg.sender, _tokenHolder, _value, _data);
+        emit Transfer(_tokenHolder, address(0), _value);
         _approve(_tokenHolder, msg.sender, currentAllowance - _value);
     }
 
