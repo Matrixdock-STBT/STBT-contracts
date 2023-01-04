@@ -63,17 +63,17 @@ contract StbtTimelockController is TimelockController {
     //     schedule(target, 0, data, predecessor, salt, 0);
     // }
 
-    function cancelOperation(
-        address target,
-        uint256 value,
-        bytes calldata data,
-        bytes32 predecessor,
-        bytes32 salt
-    ) public onlyRole(CANCELLER_ROLE) {
+    // function cancelOperation(
+    //     address target,
+    //     uint256 value,
+    //     bytes calldata data,
+    //     bytes32 predecessor,
+    //     bytes32 salt
+    // ) public onlyRole(CANCELLER_ROLE) {
 
-        bytes32 id = hashOperation(target, value, data, predecessor, salt);
-        cancel(id);
-    }
+    //     bytes32 id = hashOperation(target, value, data, predecessor, salt);
+    //     cancel(id);
+    // }
 
     function _execute(
         address target,
@@ -160,10 +160,8 @@ contract STBT is Ownable, ISTBT {
     uint8 private constant PermissionRequested = 0x13;
     uint8 private constant RevokedOrBanned = 0x16;
 
-    event InterestsDistributed(int interest, uint newTotalSupply, uint distributeTime, uint distributeTimeLength);
+    event InterestsDistributed(int interest, uint newTotalSupply, uint interestFromTime, uint interestToTime);
     event TransferShares(address indexed from, address indexed to, uint256 sharesValue);
-    event SharesBurnt(address indexed account, uint256 preRebaseTokenAmount,
-        uint256 postRebaseTokenAmount, uint256 sharesAmount);
 
     modifier onlyIssuer() {
         require(msg.sender == issuer, 'STBT: NOT_ISSUER');
@@ -259,6 +257,11 @@ contract STBT is Ownable, ISTBT {
         return shares[_account];
     }
 
+    function getSharesByAmountRoundUp(uint256 _amount) public view returns (uint256 result) {
+        uint _totalSupply = totalSupply;
+        return _totalSupply == 0 ? 0 : (_amount * totalShares + _totalSupply - 1) / _totalSupply;
+    }
+
     function getSharesByAmount(uint256 _amount) public view returns (uint256 result) {
         // unchecked {
         //     result = _amount * totalShares / totalSupply; // divide-by-zero will return zero
@@ -293,8 +296,7 @@ contract STBT is Ownable, ISTBT {
     function _transfer(address _sender, address _recipient, uint256 _amount) internal {
         uint256 _sharesToTransfer = getSharesByAmount(_amount);
         _transferShares(_sender, _recipient, _sharesToTransfer);
-        emit Transfer(_sender, _recipient, _amount);
-        emit TransferShares(_sender, _recipient, _sharesToTransfer);
+        emit Transfer(_sender, _recipient, getAmountByShares(_sharesToTransfer));
     }
 
     function _approve(address _owner, address _spender, uint256 _amount) internal {
@@ -311,6 +313,7 @@ contract STBT is Ownable, ISTBT {
 
         shares[_sender] = currentSenderShares - _shares;
         shares[_recipient] = shares[_recipient] + _shares;
+        emit TransferShares(_sender, _recipient, _shares);
     }
 
     function _mintSharesWithCheck(address _recipient, uint256 _shares) internal returns (uint256 newTotalShares) {
@@ -320,6 +323,7 @@ contract STBT is Ownable, ISTBT {
         totalShares += _shares;
 
         shares[_recipient] += _shares;
+        emit TransferShares(address(0), _recipient, _shares);
         return totalShares;
     }
 
@@ -334,19 +338,15 @@ contract STBT is Ownable, ISTBT {
         uint256 accountShares = shares[_account];
         require(_shares <= accountShares, "STBT: BURN_AMOUNT_EXCEEDS_BALANCE");
 
-        uint256 preRebaseTokenAmount = getAmountByShares(_shares);
-
         newTotalShares = totalShares - _shares;
         totalShares = newTotalShares;
 
         shares[_account] = accountShares - _shares;
 
-        uint256 postRebaseTokenAmount = getAmountByShares(_shares);
-
-        emit SharesBurnt(_account, preRebaseTokenAmount, postRebaseTokenAmount, _shares);
+        emit TransferShares(_account, address(0), _shares);
     }
 
-    function distributeInterests(int256 _distributedInterest) external onlyIssuer {
+    function distributeInterests(int256 _distributedInterest, uint interestFromTime, uint interestToTime) external onlyIssuer {
         uint oldTotalSupply = totalSupply;
         uint newTotalSupply;
         if(_distributedInterest > 0) {
@@ -358,7 +358,7 @@ contract STBT is Ownable, ISTBT {
         }
         totalSupply = newTotalSupply;
         require(lastDistributeTime + minDistributeInterval < block.timestamp, 'STBT: MIN_DISTRIBUTE_INTERVAL_VIOLATED');
-        emit InterestsDistributed(_distributedInterest, newTotalSupply, block.timestamp, block.timestamp - lastDistributeTime);
+	emit InterestsDistributed(_distributedInterest, newTotalSupply, interestFromTime, interestToTime);
         lastDistributeTime = uint64(block.timestamp);
     }
 
@@ -372,8 +372,10 @@ contract STBT is Ownable, ISTBT {
     }
 
     function controllerRedeem(address _tokenHolder, uint256 _value, bytes calldata _data, bytes calldata _operatorData) external onlyController {
-        _burnShares(_tokenHolder, getSharesByAmount(_value));
+        uint sharesDelta = getSharesByAmountRoundUp(_value);
+        _burnShares(_tokenHolder, sharesDelta);
         totalSupply -= _value;
+        _value = getAmountByShares(sharesDelta);
         emit ControllerRedemption(msg.sender, _tokenHolder, _value, _data, _operatorData);
         emit Transfer(_tokenHolder, address(0), _value);
     }
@@ -415,8 +417,10 @@ contract STBT is Ownable, ISTBT {
         if (_value == 0) {
             return;
         }
-        _burnSharesWithCheck(msg.sender, getSharesByAmount(_value));
+        uint sharesDelta = getSharesByAmountRoundUp(_value);
+        _burnSharesWithCheck(msg.sender, sharesDelta);
         totalSupply -= _value;
+        _value = getAmountByShares(sharesDelta);
         emit Redeemed(msg.sender, msg.sender, _value, _data);
         emit Transfer(msg.sender, address(0), _value);
     }
@@ -425,8 +429,10 @@ contract STBT is Ownable, ISTBT {
         uint256 currentAllowance = allowances[_tokenHolder][msg.sender];
         require(currentAllowance >= _value, "STBT: REDEEM_AMOUNT_EXCEEDS_ALLOWANCE");
 
-        _burnSharesWithCheck(_tokenHolder, getSharesByAmount(_value));
+        uint sharesDelta = getSharesByAmountRoundUp(_value);
+        _burnSharesWithCheck(_tokenHolder, sharesDelta);
         totalSupply -= _value;
+        _value = getAmountByShares(sharesDelta);
         emit Redeemed(msg.sender, _tokenHolder, _value, _data);
         emit Transfer(_tokenHolder, address(0), _value);
         _approve(_tokenHolder, msg.sender, currentAllowance - _value);
