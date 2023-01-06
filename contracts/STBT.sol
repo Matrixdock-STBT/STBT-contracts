@@ -203,7 +203,7 @@ contract STBT is Ownable, ISTBT {
     }
 
     function name() public pure returns (string memory) {
-        return "Short-term Treasury Bond Token";
+        return "Short-term Treasury Bill Token";
     }
 
     function symbol() public pure returns (string memory) {
@@ -358,7 +358,7 @@ contract STBT is Ownable, ISTBT {
         }
         totalSupply = newTotalSupply;
         require(lastDistributeTime + minDistributeInterval < block.timestamp, 'STBT: MIN_DISTRIBUTE_INTERVAL_VIOLATED');
-	emit InterestsDistributed(_distributedInterest, newTotalSupply, interestFromTime, interestToTime);
+        emit InterestsDistributed(_distributedInterest, newTotalSupply, interestFromTime, interestToTime);
         lastDistributeTime = uint64(block.timestamp);
     }
 
