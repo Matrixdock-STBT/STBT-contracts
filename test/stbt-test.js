@@ -49,7 +49,7 @@ describe("STBT", function () {
       const { proxy, owner, alice } = await loadFixture(deployStbtFixture);
 
       await expect(proxy.connect(alice).resetImplementation(alice.address))
-        .to.be.revertedWith("NOT_OWNER");
+        .to.be.revertedWith("STBT: NOT_OWNER");
     });
 
     it("resetImplementation: ok", async function () {
@@ -76,13 +76,24 @@ describe("STBT", function () {
         .to.be.revertedWith("Ownable: caller is not the owner");
       await expect(stbt.connect(alice).setMaxDistributeRatio(456))
         .to.be.revertedWith("Ownable: caller is not the owner");
+      await expect(stbt.connect(alice).transferOwnership(alice.address))
+        .to.be.revertedWith("Ownable: caller is not the owner");
+    });
+
+    it("transferOwnership", async function () {
+      const { stbt, owner, alice } = await loadFixture(deployStbtFixture);
+      expect(await stbt.owner()).to.equal(owner.address);
+
+      await expect(stbt.connect(owner).transferOwnership(alice.address))
+        .to.emit(stbt, "OwnershipTransferred").withArgs(owner.address, alice.address);
+      expect(await stbt.owner()).to.equal(alice.address);
     });
 
     it("setPermission: NOT_MODERATOR", async function () {
       const { stbt, moderator, alice } = await loadFixture(deployStbtFixture);
 
       await expect(stbt.connect(alice).setPermission(alice.address, [true, true, 0]))
-        .to.be.revertedWith("NOT_MODERATOR");
+        .to.be.revertedWith("STBT: NOT_MODERATOR");
     });
 
     it("setPermission: ok", async function () {
@@ -108,7 +119,7 @@ describe("STBT", function () {
 
     it("metadata", async function () {
       const { stbt } = await loadFixture(deployStbtFixture);
-      expect(await stbt.name()).to.equal('Short-term Treasury Bond Token');
+      expect(await stbt.name()).to.equal('Short-term Treasury Bill Token');
       expect(await stbt.symbol()).to.equal('STBT');
       expect(await stbt.decimals()).to.equal(18);
     });
@@ -120,24 +131,24 @@ describe("STBT", function () {
       await stbt.connect(moderator).setPermission(alice.address, [false, false, 0]);
 
       await expect(stbt.connect(alice).transfer(bob.address, 123))
-        .to.be.revertedWith('NO_SEND_PERMISSION');
+        .to.be.revertedWith('STBT: NO_SEND_PERMISSION');
 
       await stbt.connect(moderator).setPermission(alice.address, [true, false, 11111111]);
       await expect(stbt.connect(alice).transfer(bob.address, 123))
-        .to.be.revertedWith('SEND_PERMISSION_EXPIRED');
+        .to.be.revertedWith('STBT: SEND_PERMISSION_EXPIRED');
 
       await stbt.connect(moderator).setPermission(alice.address, [true, false, 0]);
       await expect(stbt.connect(alice).transfer(bob.address, 123))
-        .to.be.revertedWith('NO_RECEIVE_PERMISSION');
+        .to.be.revertedWith('STBT: NO_RECEIVE_PERMISSION');
 
       const ts = await lastBlockTS();
       await stbt.connect(moderator).setPermission(alice.address, [true, false, ts + 100]);
       await expect(stbt.connect(alice).transfer(bob.address, 123))
-        .to.be.revertedWith('NO_RECEIVE_PERMISSION');
+        .to.be.revertedWith('STBT: NO_RECEIVE_PERMISSION');
 
       await stbt.connect(moderator).setPermission(bob.address, [false, true, 11111111]);
       await expect(stbt.connect(alice).transfer(bob.address, 123))
-        .to.be.revertedWith('RECEIVE_PERMISSION_EXPIRED');
+        .to.be.revertedWith('STBT: RECEIVE_PERMISSION_EXPIRED');
 
       await stbt.connect(moderator).setPermission(bob.address, [false, true, ts + 100]);
       await stbt.connect(alice).transfer(bob.address, 123); // ok
@@ -191,7 +202,7 @@ describe("STBT", function () {
         .to.emit(stbt, "Approval").withArgs(bob.address, alice.address, 1900);
 
       await expect(stbt.connect(bob).decreaseAllowance(alice.address, 1901))
-        .to.be.revertedWith('DECREASED_ALLOWANCE_BELOW_ZERO');
+        .to.be.revertedWith('STBT: DECREASED_ALLOWANCE_BELOW_ZERO');
 
       expect(await stbt.allowance(bob.address, alice.address)).to.equal(1900);
       expect(await stbt.allowance(alice.address, bob.address)).to.equal(0);
@@ -203,11 +214,11 @@ describe("STBT", function () {
       await stbt.connect(issuer).issue(alice.address, 10000, '0x');
 
       await expect(stbt.connect(alice).transferFrom(bob.address, cindy.address, 123))
-        .to.be.revertedWith('TRANSFER_AMOUNT_EXCEEDS_ALLOWANCE');
+        .to.be.revertedWith('STBT: TRANSFER_AMOUNT_EXCEEDS_ALLOWANCE');
 
       stbt.connect(bob).approve(alice.address, 122);
       await expect(stbt.connect(alice).transferFrom(bob.address, cindy.address, 123))
-        .to.be.revertedWith('TRANSFER_AMOUNT_EXCEEDS_ALLOWANCE');
+        .to.be.revertedWith('STBT: TRANSFER_AMOUNT_EXCEEDS_ALLOWANCE');
     });
 
     it("transferFrom: permissions checks", async function () {
@@ -218,24 +229,24 @@ describe("STBT", function () {
       await stbt.connect(alice).approve(cindy.address, 128);
 
       await expect(stbt.connect(cindy).transferFrom(alice.address, bob.address, 123))
-        .to.be.revertedWith('NO_SEND_PERMISSION');
+        .to.be.revertedWith('STBT: NO_SEND_PERMISSION');
 
       await stbt.connect(moderator).setPermission(alice.address, [true, false, 11111111]);
       await expect(stbt.connect(cindy).transferFrom(alice.address, bob.address, 123))
-        .to.be.revertedWith('SEND_PERMISSION_EXPIRED');
+        .to.be.revertedWith('STBT: SEND_PERMISSION_EXPIRED');
 
       await stbt.connect(moderator).setPermission(alice.address, [true, false, 0]);
       await expect(stbt.connect(cindy).transferFrom(alice.address, bob.address, 123))
-        .to.be.revertedWith('NO_RECEIVE_PERMISSION');
+        .to.be.revertedWith('STBT: NO_RECEIVE_PERMISSION');
 
       const ts = await lastBlockTS();
       await stbt.connect(moderator).setPermission(alice.address, [true, false, ts + 100]);
       await expect(stbt.connect(cindy).transferFrom(alice.address, bob.address, 123))
-        .to.be.revertedWith('NO_RECEIVE_PERMISSION');
+        .to.be.revertedWith('STBT: NO_RECEIVE_PERMISSION');
 
       await stbt.connect(moderator).setPermission(bob.address, [false, true, 11111111]);
       await expect(stbt.connect(cindy).transferFrom(alice.address, bob.address, 123))
-        .to.be.revertedWith('RECEIVE_PERMISSION_EXPIRED');
+        .to.be.revertedWith('STBT: RECEIVE_PERMISSION_EXPIRED');
 
       await stbt.connect(moderator).setPermission(bob.address, [false, true, ts + 100]);
       stbt.connect(cindy).transferFrom(alice.address, bob.address, 123); // ok
@@ -268,11 +279,11 @@ describe("STBT", function () {
       const invalidName = ethers.utils.formatBytes32String("");
       const docHash = ethers.utils.formatBytes32String("docAHash");
       await expect(stbt.connect(owner).setDocument(invalidName, 'uri', docHash))
-        .to.be.revertedWith('INVALID_DOC_NAME');
+        .to.be.revertedWith('STBT: INVALID_DOC_NAME');
 
       const docName = ethers.utils.formatBytes32String("docA");
       await expect(stbt.connect(owner).setDocument(docName, '', docHash))
-        .to.be.revertedWith('INVALID_URL');
+        .to.be.revertedWith('STBT: INVALID_URL');
     });
 
     it("removeDocument: errors", async function () {
@@ -280,7 +291,7 @@ describe("STBT", function () {
 
       const docName = ethers.utils.formatBytes32String("docA");
       await expect(stbt.connect(owner).removeDocument(docName))
-        .to.be.revertedWith('DOC_NOT_EXIST');
+        .to.be.revertedWith('STBT: DOC_NOT_EXIST');
     });
 
     it("set&get&remove document", async function () {
@@ -324,13 +335,13 @@ describe("STBT", function () {
       const { stbt, issuer, alice } = await loadFixture(deployStbtFixture);
 
       await expect(stbt.issue(alice.address, 123, '0x'))
-        .to.be.revertedWith("NOT_ISSUER");
+        .to.be.revertedWith("STBT: NOT_ISSUER");
 
       await expect(stbt.connect(issuer).issue(zeroAddr, 123, '0x'))
-        .to.be.revertedWith("MINT_TO_THE_ZERO_ADDRESS");
+        .to.be.revertedWith("STBT: MINT_TO_THE_ZERO_ADDRESS");
 
       await expect(stbt.connect(issuer).issue(alice.address, 123, '0x'))
-        .to.be.revertedWith("NO_RECEIVE_PERMISSION");
+        .to.be.revertedWith("STBT: NO_RECEIVE_PERMISSION");
     });
 
     it("issue: zero_value", async function () {
@@ -344,13 +355,13 @@ describe("STBT", function () {
 
       await stbt.connect(moderator).setPermission(alice.address, [false, true, 0]);
       await expect(stbt.connect(issuer).issue(alice.address, 123, '0x0a11ce'))
-        .to.emit(stbt, "Issued")
-        .withArgs(issuer.address, alice.address, 123, '0x0a11ce');
+        .to.emit(stbt, "Issued").withArgs(issuer.address, alice.address, 123, '0x0a11ce')
+        .to.emit(stbt, "Transfer").withArgs(zeroAddr, alice.address, 123);
 
       await stbt.connect(moderator).setPermission(bob.address, [false, true, 0]);
       await expect(stbt.connect(issuer).issue(bob.address, 456789, '0x0b0b'))
-        .to.emit(stbt, "Issued")
-        .withArgs(issuer.address, bob.address, 456789, '0x0b0b');
+        .to.emit(stbt, "Issued").withArgs(issuer.address, bob.address, 456789, '0x0b0b')
+        .to.emit(stbt, "Transfer").withArgs(zeroAddr, bob.address, 456789);
     });
 
     it("issue: totalSupply & balanceOf", async function () {
@@ -373,45 +384,51 @@ describe("STBT", function () {
       expect(await stbt.balanceOf(bob.address)).to.equal(20000);
     });
 
+    // it("redeem & redeemFrom", async function () {
+    //   const { stbt, alice } = await loadFixture(deployStbtFixture);
+
+    //   await expect(stbt.redeem(10001, '0x')).to.be.revertedWith('UNSUPPORTED');
+    //   await expect(stbt.redeemFrom(alice.address, 10001, '0x')).to.be.revertedWith('UNSUPPORTED');
+    // });
+
     it("redeem: errors", async function () {
       const { stbt, issuer, moderator, alice, bob } = await loadFixture(deployStbtFixture);
-      await stbt.connect(moderator).setPermission(alice.address, [false, true, 0]);
-      await stbt.connect(issuer).issue(alice.address, 10000, '0x');
-      await stbt.connect(moderator).setPermission(alice.address, [false, false, 0]);
+      await stbt.connect(moderator).setPermission(issuer.address, [false, true, 0]);
+      await stbt.connect(issuer).issue(issuer.address, 10000, '0x');
 
       await expect(stbt.connect(alice).redeem(123, '0x'))
-        .to.be.revertedWith("NO_SEND_PERMISSION");
+        .to.be.revertedWith("STBT: NOT_ISSUER");
 
-      await stbt.connect(moderator).setPermission(alice.address, [true, true, 0]);
-      await expect(stbt.connect(alice).redeem(10001, '0x'))
-        .to.be.revertedWith("BURN_AMOUNT_EXCEEDS_BALANCE");
+      await expect(stbt.connect(issuer).redeem(123, '0x'))
+        .to.be.revertedWith("STBT: NO_SEND_PERMISSION");
+
+      await stbt.connect(moderator).setPermission(issuer.address, [true, true, 0]);
+      await expect(stbt.connect(issuer).redeem(10001, '0x'))
+        .to.be.revertedWith("STBT: BURN_AMOUNT_EXCEEDS_BALANCE");
     });
 
     it("redeem: zero_value", async function () {
-      const { stbt, issuer, moderator, alice, bob } = await loadFixture(deployStbtFixture);
-      await stbt.connect(moderator).setPermission(alice.address, [false, true, 0]);
-      await stbt.connect(issuer).issue(alice.address, 10000, '0x');
-      await stbt.connect(moderator).setPermission(alice.address, [false, false, 0]);
-
-      await stbt.connect(alice).redeem(0, '0x');
+      const { stbt, issuer } = await loadFixture(deployStbtFixture);
+      await stbt.connect(issuer).redeem(0, '0x');
     });
 
     it("redeem: events and balances", async function () {
       const { stbt, issuer, moderator, alice, bob } = await loadFixture(deployStbtFixture);
-      await stbt.connect(moderator).setPermission(alice.address, [true, true, 0]);
-      await stbt.connect(issuer).issue(alice.address, 10000, '0x');
+      await stbt.connect(moderator).setPermission(issuer.address, [true, true, 0]);
+      await stbt.connect(issuer).issue(issuer.address, 10000, '0x');
 
       expect(await stbt.totalSupply()).to.equal(10000);
-      expect(await stbt.balanceOf(alice.address)).to.equal(10000);
-      expect(await stbt.sharesOf(alice.address)).to.equal(10000);
+      expect(await stbt.balanceOf(issuer.address)).to.equal(10000);
+      expect(await stbt.sharesOf(issuer.address)).to.equal(10000);
 
-      await expect(stbt.connect(alice).redeem(2000, '0x1234'))
-        .to.emit(stbt, "SharesBurnt").withArgs(alice.address, 2000, 2500, 2000)
-        .to.emit(stbt, "Redeemed").withArgs(alice.address, alice.address, 2000, '0x1234');
+      await expect(stbt.connect(issuer).redeem(3000, '0x1234'))
+        .to.emit(stbt, "TransferShares").withArgs(issuer.address, zeroAddr, 3000)
+        .to.emit(stbt, "Redeemed").withArgs(issuer.address, issuer.address, 3000, '0x1234')
+        .to.emit(stbt, "Transfer").withArgs(issuer.address, zeroAddr, 3000);
 
-      expect(await stbt.totalSupply()).to.equal(8000);
-      expect(await stbt.balanceOf(alice.address)).to.equal(8000);
-      expect(await stbt.sharesOf(alice.address)).to.equal(8000);
+      expect(await stbt.totalSupply()).to.equal(7000);
+      expect(await stbt.balanceOf(issuer.address)).to.equal(7000);
+      expect(await stbt.sharesOf(issuer.address)).to.equal(7000);
     });
 
     it("redeemFrom: errors", async function () {
@@ -421,30 +438,34 @@ describe("STBT", function () {
       await stbt.connect(moderator).setPermission(bob.address, [false, false, 0]);
 
       await expect(stbt.connect(alice).redeemFrom(bob.address, 123, '0x'))
-        .to.be.revertedWith("REDEEM_AMOUNT_EXCEEDS_ALLOWANCE");
+        .to.be.revertedWith("STBT: NOT_ISSUER");
 
-      await stbt.connect(bob).approve(alice.address, 10000);
-      await expect(stbt.connect(alice).redeemFrom(bob.address, 12345, '0x'))
-        .to.be.revertedWith("REDEEM_AMOUNT_EXCEEDS_ALLOWANCE");
+      await expect(stbt.connect(issuer).redeemFrom(bob.address, 123, '0x'))
+        .to.be.revertedWith("STBT: REDEEM_AMOUNT_EXCEEDS_ALLOWANCE");
 
-      await expect(stbt.connect(alice).redeemFrom(bob.address, 123, '0x'))
-        .to.be.revertedWith("NO_SEND_PERMISSION");
+      await stbt.connect(bob).approve(issuer.address, 10000);
+      await expect(stbt.connect(issuer).redeemFrom(bob.address, 12345, '0x'))
+        .to.be.revertedWith("STBT: REDEEM_AMOUNT_EXCEEDS_ALLOWANCE");
+
+      await expect(stbt.connect(issuer).redeemFrom(bob.address, 123, '0x'))
+        .to.be.revertedWith("STBT: NO_SEND_PERMISSION");
 
       await stbt.connect(moderator).setPermission(bob.address, [true, true, 0]);
-      await expect(stbt.connect(alice).redeemFrom(bob.address, 12345, '0x'))
-        .to.be.revertedWith("REDEEM_AMOUNT_EXCEEDS_ALLOWANCE");
+      await expect(stbt.connect(issuer).redeemFrom(bob.address, 12345, '0x'))
+        .to.be.revertedWith("STBT: REDEEM_AMOUNT_EXCEEDS_ALLOWANCE");
     });
 
     it("redeemFrom: events and balances", async function () {
       const { stbt, issuer, moderator, alice, bob } = await loadFixture(deployStbtFixture);
       await stbt.connect(moderator).setPermission(bob.address, [true, true, 0]);
       await stbt.connect(issuer).issue(bob.address, 10000, '0x');
-      await stbt.connect(bob).approve(alice.address, 20000);
+      await stbt.connect(bob).approve(issuer.address, 20000);
 
-      await expect(stbt.connect(alice).redeemFrom(bob.address, 3000, '0x4321'))
-        .to.emit(stbt, "SharesBurnt").withArgs(bob.address, 3000, 4285, 3000)
-        .to.emit(stbt, "Redeemed").withArgs(alice.address, bob.address, 3000, '0x4321')
-        .to.emit(stbt, "Approval").withArgs(bob.address, alice.address, 17000);
+      await expect(stbt.connect(issuer).redeemFrom(bob.address, 3000, '0x4321'))
+        .to.emit(stbt, "TransferShares").withArgs(bob.address, zeroAddr, 3000)
+        .to.emit(stbt, "Redeemed").withArgs(issuer.address, bob.address, 3000, '0x4321')
+        .to.emit(stbt, "Approval").withArgs(bob.address, issuer.address, 17000)
+        .to.emit(stbt, "Transfer").withArgs(bob.address, zeroAddr, 3000);
 
       expect(await stbt.totalSupply()).to.equal(7000);
       expect(await stbt.balanceOf(bob.address)).to.equal(7000);
@@ -577,16 +598,16 @@ describe("STBT", function () {
       await stbt.connect(moderator).setPermission(alice.address, [false, false, 0]);
 
       await expect(stbt.connect(alice).controllerTransfer(alice.address, bob.address, 123, '0x1234', '0x5678'))
-        .to.be.revertedWith("NOT_CONTROLLER");
+        .to.be.revertedWith("STBT: NOT_CONTROLLER");
 
       await expect(stbt.connect(controller).controllerTransfer(zeroAddr, bob.address, 123, '0x1234', '0x5678'))
-        .to.be.revertedWith("TRANSFER_FROM_THE_ZERO_ADDRESS");
+        .to.be.revertedWith("STBT: TRANSFER_FROM_THE_ZERO_ADDRESS");
 
       await expect(stbt.connect(controller).controllerTransfer(bob.address, zeroAddr, 123, '0x1234', '0x5678'))
-        .to.be.revertedWith("TRANSFER_TO_THE_ZERO_ADDRESS");
+        .to.be.revertedWith("STBT: TRANSFER_TO_THE_ZERO_ADDRESS");
 
       await expect(stbt.connect(controller).controllerTransfer(alice.address, bob.address, 12345, '0x1234', '0x5678'))
-        .to.be.revertedWith("TRANSFER_AMOUNT_EXCEEDS_BALANCE");
+        .to.be.revertedWith("STBT: TRANSFER_AMOUNT_EXCEEDS_BALANCE");
     });
 
     it("controllerTransfer: events and balances", async function () {
@@ -612,13 +633,13 @@ describe("STBT", function () {
       await stbt.connect(moderator).setPermission(alice.address, [false, false, 0]);
 
       await expect(stbt.connect(alice).controllerRedeem(alice.address, 123, '0x1234', '0x5678'))
-        .to.be.revertedWith("NOT_CONTROLLER");
+        .to.be.revertedWith("STBT: NOT_CONTROLLER");
 
       await expect(stbt.connect(controller).controllerRedeem(zeroAddr, 123, '0x1234', '0x5678'))
-        .to.be.revertedWith("BURN_FROM_THE_ZERO_ADDRESS");
+        .to.be.revertedWith("STBT: BURN_FROM_THE_ZERO_ADDRESS");
 
       await expect(stbt.connect(controller).controllerRedeem(alice.address, 12345, '0x1234', '0x5678'))
-        .to.be.revertedWith("BURN_AMOUNT_EXCEEDS_BALANCE");
+        .to.be.revertedWith("STBT: BURN_AMOUNT_EXCEEDS_BALANCE");
     });
 
     it("controllerRedeem: events and balances", async function () {
@@ -628,8 +649,9 @@ describe("STBT", function () {
       await stbt.connect(moderator).setPermission(alice.address, [false, false, 0]);
 
       await expect(stbt.connect(controller).controllerRedeem(alice.address, 4000, '0x1234', '0x5678'))
-        .to.emit(stbt, "SharesBurnt").withArgs(alice.address, 4000, 6666, 4000)
-        .to.emit(stbt, "ControllerRedemption").withArgs(controller.address, alice.address, 4000, '0x1234', '0x5678');
+        .to.emit(stbt, "TransferShares").withArgs(alice.address, zeroAddr, 4000)
+        .to.emit(stbt, "ControllerRedemption").withArgs(controller.address, alice.address, 4000, '0x1234', '0x5678')
+        .to.emit(stbt, "Transfer").withArgs(alice.address, zeroAddr, 4000);
 
       expect(await stbt.balanceOf(alice.address)).to.equal(6000);
     });
@@ -645,22 +667,30 @@ describe("STBT", function () {
       await stbt.connect(owner).setMaxDistributeRatio(ethers.utils.parseUnits('0.1')); // 10%
       await stbt.connect(owner).setMinDistributeInterval(24 * 3600); // 1 day
 
-      await expect(stbt.connect(alice).distributeInterests(12345))
-        .to.be.revertedWith("NOT_ISSUER");
+      await expect(stbt.connect(alice).distributeInterests(12345, 0, 0))
+        .to.be.revertedWith("STBT: NOT_ISSUER");
 
-      await expect(stbt.connect(issuer).distributeInterests(1001))
-        .to.be.revertedWith("MAX_DISTRIBUTE_RATIO_EXCEEDED");
+      await expect(stbt.connect(issuer).distributeInterests(1001, 0, 0))
+        .to.be.revertedWith("STBT: MAX_DISTRIBUTE_RATIO_EXCEEDED");
 
-      stbt.connect(issuer).distributeInterests(1000); // ok
-      await expect(stbt.connect(issuer).distributeInterests(1000))
-        .to.be.revertedWith("MIN_DISTRIBUTE_INTERVAL_VIOLATED");
+      await expect(stbt.connect(issuer).distributeInterests(-1001, 0, 0))
+        .to.be.revertedWith("STBT: MAX_DISTRIBUTE_RATIO_EXCEEDED");
+
+      await expect(stbt.connect(issuer).distributeInterests(1000, 0, 0))
+        .to.be.revertedWith("STBT: MIN_DISTRIBUTE_INTERVAL_VIOLATED");
+
+      await time.increase(24 * 3600);
+      stbt.connect(issuer).distributeInterests(1000, 0, 0); // ok
+
+      await expect(stbt.connect(issuer).distributeInterests(1000, 0, 0))
+        .to.be.revertedWith("STBT: MIN_DISTRIBUTE_INTERVAL_VIOLATED");
 
       await time.increase(23 * 3600);
-      await expect(stbt.connect(issuer).distributeInterests(1000))
-        .to.be.revertedWith("MIN_DISTRIBUTE_INTERVAL_VIOLATED");
+      await expect(stbt.connect(issuer).distributeInterests(1000, 0, 0))
+        .to.be.revertedWith("STBT: MIN_DISTRIBUTE_INTERVAL_VIOLATED");
 
       await time.increase(1 * 3600);
-      stbt.connect(issuer).distributeInterests(1000); // ok
+      stbt.connect(issuer).distributeInterests(1000, 0, 0); // ok
     });
 
     it("distributeInterests: events and balances", async function () {
@@ -672,14 +702,26 @@ describe("STBT", function () {
       await stbt.connect(owner).setMaxDistributeRatio(ethers.utils.parseUnits('0.1')); // 10%
       await stbt.connect(owner).setMinDistributeInterval(24 * 3600); // 1 day
 
-      await expect(stbt.connect(issuer).distributeInterests(2100))
-        .to.emit(stbt, "InterestsDistributed").withArgs(2100, 32100, anyValue, anyValue);
+      await time.increase(24 * 3600);
+      await expect(stbt.connect(issuer).distributeInterests(2100, 123456789, 123459999))
+        .to.emit(stbt, "InterestsDistributed").withArgs(2100, 32100, 123456789, 123459999);
 
       expect(await stbt.totalSupply()).to.be.equal(32100);
       expect(await stbt.totalShares()).to.be.equal(30000);
       expect(await stbt.balanceOf(alice.address)).to.equal(10700);
       expect(await stbt.sharesOf(alice.address)).to.equal(10000);
       expect(await stbt.balanceOf(bob.address)).to.equal(21400);
+      expect(await stbt.sharesOf(bob.address)).to.equal(20000);
+
+      await time.increase(24 * 3600);
+      await expect(stbt.connect(issuer).distributeInterests(-1500, 123456789, 123459999))
+        .to.emit(stbt, "InterestsDistributed").withArgs(-1500, 30600, 123456789, 123459999);
+
+      expect(await stbt.totalSupply()).to.be.equal(30600);
+      expect(await stbt.totalShares()).to.be.equal(30000);
+      expect(await stbt.balanceOf(alice.address)).to.equal(10200);
+      expect(await stbt.sharesOf(alice.address)).to.equal(10000);
+      expect(await stbt.balanceOf(bob.address)).to.equal(20400);
       expect(await stbt.sharesOf(bob.address)).to.equal(20000);
     });
 
@@ -689,62 +731,106 @@ describe("STBT", function () {
 
 describe("STBT-TimelockController", function () {
 
-  const stbtIface = new ethers.utils.Interface([
-    "function issue(address _tokenHolder, uint256 _value, bytes calldata _data) external",
-    "function setPermission(address addr, tupple(bool, bool, uint64) permission) public",
-    "function distributeInterests(uint256 _distributedInterest) external",
-  ]);
-
-  const selectors = [
-    stbtIface.getSighash("issue"),
-    stbtIface.getSighash("setPermission"),
-    stbtIface.getSighash("distributeInterests"),
-  ];
-  const delays = [
-    4 * 3600,
-    2 * 3600,
-    1 * 3600,
-  ];
-
   async function deployTimelockFixture() {
     // Contracts are deployed using the first signer/account by default
-    const [owner, issuer, controller, moderator, proposer, executor, alice, bob, cindy] = await ethers.getSigners();
+    const [owner, proposer, executor, alice, bob, cindy] = await ethers.getSigners();
 
     const TimelockController = await ethers.getContractFactory("StbtTimelockController");
+    const STBT = await ethers.getContractFactory("STBT");
+    const Proxy = await ethers.getContractFactory("UpgradeableSTBT");
+
+    // functions to be invoked by timelock
+    const timelockIface = TimelockController.interface;
+    const stbtIface = STBT.interface;
+    const proxyIface = Proxy.interface;
+    const delayMap = [
+      { selector: stbtIface.getSighash("setIssuer"),                delay: 4 * 3600 }, // onlyOwner
+      { selector: stbtIface.getSighash("setController"),            delay: 4 * 3600 }, // onlyOwner
+      { selector: stbtIface.getSighash("setModerator"),             delay: 4 * 3600 }, // onlyOwner
+      { selector: stbtIface.getSighash("setMinDistributeInterval"), delay: 4 * 3600 }, // onlyOwner
+      { selector: stbtIface.getSighash("setMaxDistributeRatio"),    delay: 4 * 3600 }, // onlyOwner
+      { selector: stbtIface.getSighash("setDocument"),              delay: 4 * 3600 }, // onlyOwner
+      { selector: stbtIface.getSighash("removeDocument"),           delay: 4 * 3600 }, // onlyOwner
+      { selector: stbtIface.getSighash("transferOwnership"),        delay: 8 * 3600 }, // onlyOwner
+      { selector: proxyIface.getSighash("resetImplementation"),     delay: 8 * 3600 }, // onlyOwner
+      { selector: stbtIface.getSighash("issue"),                    delay: 4 * 3600 }, // onlyIssuer
+      { selector: stbtIface.getSighash("redeem"),                   delay: 6 * 3600 }, // onlyIssuer
+      { selector: stbtIface.getSighash("redeemFrom"),               delay: 6 * 3600 }, // onlyIssuer
+      { selector: stbtIface.getSighash("distributeInterests"),      delay: 1 * 3600 }, // onlyIssuer
+      { selector: stbtIface.getSighash("setPermission"),            delay: 2 * 3600 }, // onlyModerator
+      { selector: stbtIface.getSighash("controllerTransfer"),       delay: 3 * 3600 }, // onlyController
+      { selector: stbtIface.getSighash("controllerRedeem"),         delay: 3 * 3600 }, // onlyController
+      { selector: timelockIface.getSighash("grantRole"),            delay: 8 * 3600 },
+      { selector: timelockIface.getSighash("revokeRole"),           delay: 8 * 3600 },
+    ];
+    // console.log(delayMap);
+    const selectors = delayMap.map(x => x.selector);
+    const delays = delayMap.map(x => x.delay);
+
     const timelock = await TimelockController.deploy(
       [proposer.address], // proposers
       [executor.address], // executors
-      owner.address,      // admin
+      zeroAddr,           // admin
       selectors,          // selectors
       delays,             // delays
     );
+    const logic = await STBT.deploy();
+    const proxy = await Proxy.deploy(timelock.address, timelock.address, timelock.address, timelock.address, logic.address);
+    const stbt = logic.attach(proxy.address);
 
-    const STBT = await ethers.getContractFactory("STBT");
-    const stbt = await STBT.deploy();
-    await stbt.setIssuer(timelock.address);
-    await stbt.setModerator(moderator.address);
-    await stbt.setController(controller.address);
-
-    return { stbt, owner, issuer, controller, moderator, alice, bob, cindy,
-      timelock, proposer, executor };
+    return { timelock, logic, stbt, proxy, delayMap, owner, proposer, executor, alice, bob, cindy };
   }
+
+  describe("deploy", function () {
+
+    it("roles", async function () {
+      const { timelock, logic, stbt, owner, proposer, executor, alice } = await loadFixture(deployTimelockFixture);
+
+      console.log('timelock :', timelock.address);
+      console.log('stbtLogic:', logic.address);
+      console.log('stbtProxy:', stbt.address);
+
+      expect(await stbt.owner()).to.equal(timelock.address);
+      expect(await stbt.issuer()).to.equal(timelock.address);
+      expect(await stbt.controller()).to.equal(timelock.address);
+      expect(await stbt.moderator()).to.equal(timelock.address);
+
+      const adminRole = await timelock.TIMELOCK_ADMIN_ROLE();
+      const proposerRole = await timelock.PROPOSER_ROLE();
+      const executorRole = await timelock.EXECUTOR_ROLE();
+      const cancellerRole = await timelock.CANCELLER_ROLE();
+      expect(await timelock.getRoleAdmin(adminRole)).to.equal(adminRole);
+      expect(await timelock.getRoleAdmin(proposerRole)).to.equal(adminRole);
+      expect(await timelock.getRoleAdmin(executorRole)).to.equal(adminRole);
+      expect(await timelock.getRoleAdmin(cancellerRole)).to.equal(adminRole);
+      expect(await timelock.hasRole(adminRole, timelock.address)).to.equal(true);
+      expect(await timelock.hasRole(adminRole, owner.address)).to.equal(false);
+      expect(await timelock.hasRole(proposerRole, proposer.address)).to.equal(true);
+      expect(await timelock.hasRole(proposerRole, alice.address)).to.equal(false);
+      expect(await timelock.hasRole(cancellerRole, proposer.address)).to.equal(true);
+      expect(await timelock.hasRole(cancellerRole, alice.address)).to.equal(false);
+      expect(await timelock.hasRole(executorRole, executor.address)).to.equal(true);
+    });
+
+  });
 
   describe("TimelockController", function () {
 
     it("delays", async function () {
-      const { timelock } = await loadFixture(deployTimelockFixture);
+      const { timelock, delayMap } = await loadFixture(deployTimelockFixture);
+
       expect(await timelock.getMinDelay()).to.equal(0);
-      expect(await timelock.delayMap(selectors[0])).to.equal(delays[0]);
-      expect(await timelock.delayMap(selectors[1])).to.equal(delays[1]);
-      expect(await timelock.delayMap(selectors[2])).to.equal(delays[2]);
       expect(await timelock.delayMap('0x12345678')).to.equal(0);
+      for (const { selector, delay } of delayMap) {      
+        expect(await timelock.delayMap(selector)).to.equal(delay);
+      }
     });
 
     it("updateDelay: UNSUPPORTED", async function () {
       const { timelock } = await loadFixture(deployTimelockFixture);
 
       await expect(timelock.updateDelay(1000))
-        .to.be.revertedWith("UNSUPPORTED");
+        .to.be.revertedWith("TimelockController: UNSUPPORTED");
     });
 
     it("scheduleBatch: UNSUPPORTED", async function () {
@@ -752,13 +838,13 @@ describe("STBT-TimelockController", function () {
 
       const target = stbt.address;
       const value = 0;
-      const data = stbtIface.encodeFunctionData("issue", [alice.address, 10000, '0x1234']);
+      const data = stbt.interface.encodeFunctionData("issue", [alice.address, 10000, '0x1234']);
       const predecessor = ethers.utils.formatBytes32String('');
       const salt = ethers.utils.formatBytes32String('hahah');
       const delay = 4 * 3600 + 1;
 
       await expect(timelock.connect(alice).scheduleBatch([target], [value], [data], predecessor, salt, delay))
-        .to.be.revertedWith("UNSUPPORTED");
+        .to.be.revertedWith("TimelockController: UNSUPPORTED");
     });
 
     it("schedule: UNKNOWN_SELECTOR", async function () {
@@ -772,7 +858,36 @@ describe("STBT-TimelockController", function () {
       const delay = 0;
 
       await expect(timelock.connect(proposer).schedule(target, value, data, predecessor, salt, delay))
-        .to.be.revertedWith("UNKNOWN_SELECTOR");
+        .to.be.revertedWith("TimelockController: UNKNOWN_SELECTOR");
+    });
+
+    // it("cancelOperation: AccessControl", async function () {
+    //   const { timelock, stbt, proposer, alice } = await loadFixture(deployTimelockFixture);
+
+    //   const target = stbt.address;
+    //   const value = 0;
+    //   const data = stbt.interface.encodeFunctionData("issue", [alice.address, 10000, '0x1234']);
+    //   const predecessor = ethers.utils.formatBytes32String('');
+    //   const salt = ethers.utils.formatBytes32String('hahah');
+    //   const delay = 4 * 3600;
+
+    //   timelock.connect(proposer).schedule(target, value, data, predecessor, salt, 0);
+
+    //   await expect(timelock.connect(alice).cancelOperation(target, value, data, predecessor, salt))
+    //     .to.be.revertedWith(`AccessControl: account ${alice.address.toLowerCase()} is missing role 0xfd643c72710c63c0180259aba6b2d05451e3591a24e58b62239378085726f783`);
+    // });
+
+    it("hashOperation", async function () {
+      const { timelock } = await loadFixture(deployTimelockFixture);
+
+      const target = '0x324E132EAc14AfFeA5dF80e04b919d97035dc952';
+      const data = '0x1234';
+      const predecessor = ethers.utils.formatBytes32String('');
+      const salt = ethers.utils.formatBytes32String('hahah');
+      const opid = '0x66fe9bb6e79a0629e0daf63e1528284fc1887e17f45a559e5c5b7776ec59617b';
+
+      expect(await timelock.hashOperation(target, 0, data, predecessor, salt))
+        .to.equal(opid);
     });
 
   });
@@ -784,10 +899,13 @@ describe("STBT-TimelockController", function () {
 
       const target = stbt.address;
       const value = 0;
-      const data = stbtIface.encodeFunctionData("issue", [alice.address, 10000, '0x1234']);
+      const data = stbt.interface.encodeFunctionData("issue", [alice.address, 10000, '0x1234']);
       const predecessor = ethers.utils.formatBytes32String('');
       const salt = ethers.utils.formatBytes32String('hahah');
       const delay = 0;
+
+      await expect(stbt.issue(alice.address, 1234, '0x5678'))
+        .to.be.revertedWith("STBT: NOT_ISSUER");
 
       await expect(timelock.connect(alice).schedule(target, value, data, predecessor, salt, delay))
         .to.be.revertedWith(`AccessControl: account ${alice.address.toLowerCase()} is missing role 0xb09aa5aeb3702cfd50b6b62bc4532604938f21248a27a1d5ca736082b6819cc1`);
@@ -802,19 +920,35 @@ describe("STBT-TimelockController", function () {
 
       await expect(timelock.connect(executor).execute(target, value, data, predecessor, salt))
         .to.be.revertedWith("TimelockController: operation is not ready");
+
+      // forward revert message
+      await time.increase(4 * 3600);
+      await expect(timelock.connect(executor).execute(target, value, data, predecessor, salt))
+        .to.be.revertedWith("STBT: NO_RECEIVE_PERMISSION");
     });
 
-    it("issue: events", async function () {
-      const { stbt, timelock, proposer, executor, moderator, alice } = await loadFixture(deployTimelockFixture);
-      await stbt.connect(moderator).setPermission(alice.address, [false, true, 0]);
+    it("setPermission+issue: events", async function () {
+      const { stbt, timelock, proposer, executor, alice } = await loadFixture(deployTimelockFixture);
+      // await stbt.connect(moderator).setPermission(alice.address, [false, true, 0]);
 
       const target = stbt.address;
       const value = 0;
-      const data = stbtIface.encodeFunctionData("issue", [alice.address, 10000, '0x1234']);
       const predecessor = ethers.utils.formatBytes32String('');
       const salt = ethers.utils.formatBytes32String('hahah');
-      const delay = 4 * 3600;
+      let data;
+      let delay;
 
+      data = stbt.interface.encodeFunctionData("setPermission", [alice.address, [true, true, 0]]);
+      delay = 2 * 3600;
+      await expect(timelock.connect(proposer).schedule(target, value, data, predecessor, salt, 0))
+        .to.emit(timelock, "CallScheduled").withArgs(anyValue, 0, target, value, data, predecessor, delay);
+
+      await time.increase(delay + 1);
+      await expect(timelock.connect(executor).execute(target, value, data, predecessor, salt))
+        .to.emit(timelock, "CallExecuted").withArgs(anyValue, 0, target, value, data)
+
+      data = stbt.interface.encodeFunctionData("issue", [alice.address, 10000, '0x1234']);
+      delay = 4 * 3600;
       await expect(timelock.connect(proposer).schedule(target, value, data, predecessor, salt, 0))
         .to.emit(timelock, "CallScheduled").withArgs(anyValue, 0, target, value, data, predecessor, delay);
 
@@ -830,17 +964,18 @@ describe("STBT-TimelockController", function () {
 
       const target = stbt.address;
       const value = 0;
-      const data = stbtIface.encodeFunctionData("issue", [alice.address, 10000, '0x1234']);
+      const data = stbt.interface.encodeFunctionData("issue", [alice.address, 10000, '0x1234']);
       const predecessor = ethers.utils.formatBytes32String('');
       const salt = ethers.utils.formatBytes32String('hahah');
       const delay = 4 * 3600;
 
+      const opId = await timelock.hashOperation(target, value, data, predecessor, salt);
       await expect(timelock.connect(proposer).schedule(target, value, data, predecessor, salt, 0))
-        .to.emit(timelock, "CallScheduled").withArgs(anyValue, 0, target, value, data, predecessor, delay);
+        .to.emit(timelock, "CallScheduled").withArgs(opId, 0, target, value, data, predecessor, delay);
 
       await time.increase(delay / 2);
-      await expect(timelock.connect(proposer).cancelOperation(target, value, data, predecessor, salt))
-        .to.emit(timelock, "Cancelled").withArgs(anyValue);
+      await expect(timelock.connect(proposer).cancel(opId))
+        .to.emit(timelock, "Cancelled").withArgs(opId);
     });
 
     it("distributeInterests", async function () {
@@ -853,7 +988,7 @@ describe("STBT-TimelockController", function () {
       const delay = 1 * 3600;
 
       // function distributeInterests(uint256 _distributedInterest) external
-      let data = stbtIface.encodeFunctionData("distributeInterests", [20000]);
+      let data = stbt.interface.encodeFunctionData("distributeInterests", [20000, 123456789, 123459999]);
       await timelock.connect(proposer).schedule(target, value, data, predecessor, salt, 0);
 
     });
@@ -868,9 +1003,51 @@ describe("STBT-TimelockController", function () {
       const delay = 2 * 3600;
 
       // function setPermission(address addr, tupple(bool, bool, uint64) permission) public
-      let data = stbtIface.encodeFunctionData("setPermission", [alice.address, [true, true, 0]]);
+      let data = stbt.interface.encodeFunctionData("setPermission", [alice.address, [true, true, 0]]);
       await timelock.connect(proposer).schedule(target, value, data, predecessor, salt, 0);
 
+    });
+
+    it("switch TimelockController", async function () {
+      const { timelock, stbt, proposer, executor } = await loadFixture(deployTimelockFixture);
+      expect(await stbt.owner()).to.equal(timelock.address);
+      expect(await stbt.issuer()).to.equal(timelock.address);
+      expect(await stbt.controller()).to.equal(timelock.address);
+      expect(await stbt.moderator()).to.equal(timelock.address);
+
+      const TimelockController = await ethers.getContractFactory("StbtTimelockController");
+      const timelock2 = await TimelockController.deploy(
+        [zeroAddr], // proposers
+        [zeroAddr], // executors
+        zeroAddr,   // admin
+        [],         // selectors
+        [],         // delays
+      );
+
+      const target = stbt.address;
+      const value = 0;
+      const predecessor = ethers.utils.formatBytes32String('');
+      const salt = ethers.utils.formatBytes32String('hahah');
+
+      const dataArr = [
+        stbt.interface.encodeFunctionData("setIssuer",         [timelock2.address]),
+        stbt.interface.encodeFunctionData("setController",     [timelock2.address]),
+        stbt.interface.encodeFunctionData("setModerator",      [timelock2.address]),
+        stbt.interface.encodeFunctionData("transferOwnership", [timelock2.address]),
+      ];
+      for (const data of dataArr) {
+        await timelock.connect(proposer).schedule(target, value, data, predecessor, salt, 0);
+      }
+
+      await time.increase(8 * 3600 + 1); 
+      for (const data of dataArr) {
+        await timelock.connect(executor).execute(target, value, data, predecessor, salt);
+      }
+
+      expect(await stbt.owner()).to.equal(timelock2.address);
+      expect(await stbt.issuer()).to.equal(timelock2.address);
+      expect(await stbt.controller()).to.equal(timelock2.address);
+      expect(await stbt.moderator()).to.equal(timelock2.address);
     });
 
   });
