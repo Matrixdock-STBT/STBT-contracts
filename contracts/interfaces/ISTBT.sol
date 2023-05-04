@@ -71,6 +71,17 @@ interface ISTBT is IERC20, IERC20Metadata, IERC1594, IERC1643, IERC1644 {
         // Address holder’s KYC will be validated till this time, after that the holder needs to re-KYC.
         uint64 expiryTime; // default:0 validated forever
     }
+    function issuer() external view returns (address); 
+    function controller() external view returns (address); 
+    function moderator() external view returns (address); 
+    function totalShares() external view returns (uint);
+    function allowance(address _owner, address _spender) external view returns (uint256);
+    function permissions(address addr) external view returns (bool sendAllowed,
+                                                              bool receiveAllowed,
+                                                              uint64 expiryTime);
+    function lastDistributeTime() external view returns (uint64);
+    function minDistributeInterval() external view returns (uint64);
+    function maxDistributeRatio() external view returns (uint64);
 
     function setIssuer(address _issuer) external;
     function setController(address _controller) external;
