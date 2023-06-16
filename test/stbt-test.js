@@ -786,9 +786,9 @@ describe("STBT-TimelockController", function () {
     it("roles", async function () {
       const { timelock, logic, stbt, owner, proposer, executor, alice } = await loadFixture(deployTimelockFixture);
 
-      console.log('timelock :', timelock.address);
-      console.log('stbtLogic:', logic.address);
-      console.log('stbtProxy:', stbt.address);
+      // console.log('timelock :', timelock.address);
+      // console.log('stbtLogic:', logic.address);
+      // console.log('stbtProxy:', stbt.address);
 
       expect(await stbt.owner()).to.equal(timelock.address);
       expect(await stbt.issuer()).to.equal(timelock.address);
@@ -821,7 +821,7 @@ describe("STBT-TimelockController", function () {
 
       expect(await timelock.getMinDelay()).to.equal(0);
       expect(await timelock.delayMap('0x12345678')).to.equal(0);
-      for (const { selector, delay } of delayMap) {      
+      for (const { selector, delay } of delayMap) {   
         expect(await timelock.delayMap(selector)).to.equal(delay);
       }
     });
@@ -1050,6 +1050,527 @@ describe("STBT-TimelockController", function () {
       expect(await stbt.moderator()).to.equal(timelock2.address);
     });
 
+    describe("Minter", function () {
+
+      async function deployMinterFixture() {
+        const pool = await ethers.getSigners().then(s => s[6]);
+        const f = await deployTimelockFixture();
+        const Minter = await ethers.getContractFactory("Minter");
+        const minter = await Minter.deploy(f.timelock.address, f.proxy.address, pool.address);
+
+        const TestERC20 = await ethers.getContractFactory("TestERC20");
+        const usdc = await TestERC20.deploy('USDC', ethers.utils.parseUnits('100000000'), 18);
+
+        async function grantRoleByTL(role, toAddr) {
+          const { timelock, proposer, executor } = f;
+          const target = timelock.address;
+          const value = 0;
+          const data = timelock.interface.encodeFunctionData("grantRole", [role, toAddr]);
+          const predecessor = ethers.utils.formatBytes32String('');
+          const salt = ethers.utils.formatBytes32String('hello');
+          await timelock.connect(proposer).schedule(target, value, data, predecessor, salt, 0);
+          await time.increase(8 * 3600);
+          await timelock.connect(executor).execute(target, value, data, predecessor, salt);
+        }
+
+        async function setPermisionByTL(addr, permission) {
+          const { timelock, stbt, proposer, executor } = f;
+          const value = 0;
+          const target = stbt.address;
+          const data = stbt.interface.encodeFunctionData("setPermission", [addr, permission]);
+          const predecessor = ethers.utils.formatBytes32String('');
+          const salt = ethers.utils.formatBytes32String('hello');
+          await timelock.connect(proposer).schedule(target, value, data, predecessor, salt, 0);
+          await time.increase(8 * 3600);
+          await timelock.connect(executor).execute(target, value, data, predecessor, salt);
+        }
+
+        async function issueByTL(to, amt, eventData) {
+          const { timelock, stbt, proposer, executor } = f;
+          const value = 0;
+          const target = stbt.address;
+          const data = stbt.interface.encodeFunctionData("issue", [to, amt, eventData]);
+          const predecessor = ethers.utils.formatBytes32String('');
+          const salt = ethers.utils.formatBytes32String('hello');
+          await timelock.connect(proposer).schedule(target, value, data, predecessor, salt, 0);
+          await time.increase(8 * 3600);
+          await timelock.connect(executor).execute(target, value, data, predecessor, salt);
+        }
+
+        return {...f, minter, pool, usdc, grantRoleByTL, setPermisionByTL, issueByTL};
+      }
+
+      it("init", async function () {
+        const { timelock, stbt, minter, pool, owner } = await loadFixture(deployMinterFixture);
+
+        expect(await minter.owner()).to.equal(owner.address);
+        expect(await minter.timeLockContract()).to.equal(timelock.address);
+        expect(await minter.targetContract()).to.equal(stbt.address);
+        expect(await minter.poolAccount()).to.equal(pool.address);
+        expect(await minter.nonceForMint()).to.equal(0);
+        expect(await minter.nonceForRedeem()).to.equal(0);
+      });
+
+      it("ops: onlyOwner!", async function () {
+        const { timelock, stbt, minter, pool, alice } = await loadFixture(deployMinterFixture);
+
+        const badOps = [
+          minter.connect(alice).setTimeLockContract(alice.address),
+          minter.connect(alice).setTargetContract(alice.address),
+          minter.connect(alice).setPoolAccount(alice.address),
+          minter.connect(alice).setCoinInfo(alice.address, 111),
+          minter.connect(alice).setDepositConfig(alice.address, {needDivAdjust:false, adjustUnit:0, minimumDepositAmount:222}),
+          minter.connect(alice).setRedeemConfig(alice.address, {needDivAdjust:false, adjustUnit:0, minimumRedeemAmount:222}),
+          minter.connect(alice).setRedeemFeeRate(alice.address, 333),
+          minter.connect(alice).setDepositPeriod(444),
+          minter.connect(alice).setRedeemPeriod(555),
+          minter.connect(alice).redeemSettle(alice.address, 666, alice.address, ZERO_BYTES32, 666, 666),
+          minter.connect(alice).rescue(alice.address, alice.address, 777),
+        ];
+
+        for (let badOp of badOps) {    
+          await expect(badOp).to.be.revertedWith(`Ownable: caller is not the owner`);
+        }
+      });
+
+      it("setters", async function () {
+        const { minter, alice, bob, cindy } = await loadFixture(deployMinterFixture);
+
+        await minter.setTimeLockContract(alice.address);
+        await minter.setTargetContract(bob.address);
+        await minter.setPoolAccount(cindy.address);
+        await minter.setCoinInfo(alice.address, 111);
+        await minter.setDepositConfig(bob.address, {needDivAdjust:true, adjustUnit:888, minimumDepositAmount:123}),
+        await minter.setRedeemConfig(cindy.address, {needDivAdjust:true, adjustUnit:999, minimumRedeemAmount:456}),
+        await minter.setRedeemFeeRate(alice.address, 333),
+        await minter.setDepositPeriod(444);
+        await minter.setRedeemPeriod(555);
+
+        const getVals = (x => x.map(y => y));
+
+        expect(await minter.timeLockContract()).to.equal(alice.address);
+        expect(await minter.targetContract()).to.equal(bob.address);
+        expect(await minter.poolAccount()).to.equal(cindy.address);
+        expect(await minter.getCoinInfo(alice.address)).to.equal(111);
+        expect(await minter.depositConfigMap(bob.address).then(getVals)).to.deep.equal([true, 888, 123]);
+        expect(await minter.redeemConfigMap(cindy.address).then(getVals)).to.deep.equal([true, 999, 456]);
+        expect(await minter.redeemFeeRateMap(alice.address)).to.equal(333);
+        expect(await minter.depositPeriod()).to.equal(444);
+        expect(await minter.redeemPeriod()).to.equal(555);
+      });
+
+      it("getCoinsInfo", async function () {
+        const { minter, alice, bob, cindy } = await loadFixture(deployMinterFixture);
+
+        await minter.setCoinInfo(alice.address, 123);
+        await minter.setCoinInfo(bob.address, 456);
+        await minter.setCoinInfo(cindy.address, 789);
+
+        expect(await minter.getCoinsInfo()).to.deep.equal([
+          [alice.address, bob.address, cindy.address],
+          [123, 456, 789],
+        ]);
+      });
+
+      it("mint: errors", async function () {
+        const { timelock, minter, usdc, proposer, executor, alice, bob, cindy,
+          setPermisionByTL } = await loadFixture(deployMinterFixture);
+        const salt = ethers.utils.formatBytes32String('hello');
+
+        await expect(minter.connect(alice).mint(usdc.address, 10000, 10000, salt, "0x"))
+          .to.be.revertedWith(`MINTER: NO_RECEIVE_PERMISSION`);
+
+        // await stbt.setPermission(alice.address, [true, true, 123]);
+        await setPermisionByTL(alice.address, [true, true, 123]);
+        await expect(minter.connect(alice).mint(usdc.address, 10000, 10000, salt, "0x"))
+          .to.be.revertedWith(`MINTER: RECEIVE_PERMISSION_EXPIRED`);
+
+        await setPermisionByTL(alice.address, [true, true, 0]);
+        await expect(minter.connect(alice).mint(usdc.address, 10000, 10000, salt, "0x"))
+          .to.be.revertedWith(`EnumerableMap: nonexistent key`);
+
+        const receiverAndRate = BigInt(bob.address) << 96n | BigInt(ethers.utils.parseUnits('0.02'));
+        await minter.setCoinInfo(usdc.address, receiverAndRate);
+        await minter.setDepositConfig(usdc.address, {needDivAdjust:false, adjustUnit:1, minimumDepositAmount:99999});
+        await expect(minter.connect(alice).mint(usdc.address, 10000, 8888, salt, "0x"))
+          .to.be.revertedWith(`MINTER: DEPOSIT_AMOUNT_TOO_SMALL`);
+
+        await minter.setDepositConfig(usdc.address, {needDivAdjust:false, adjustUnit:1, minimumDepositAmount:9999});
+        await expect(minter.connect(alice).mint(usdc.address, 10000, 9999, salt, "0x"))
+          .to.be.revertedWith(`MINTER: PROPOSE_AMOUNT_TOO_SMALL`);
+
+        await expect(minter.connect(alice).mint(usdc.address, 10000, 8888, salt, "0x"))
+          .to.be.revertedWith(`ERC20: insufficient allowance`);
+
+        await usdc.connect(alice).approve(minter.address, 20000);
+        await expect(minter.connect(alice).mint(usdc.address, 10000, 8888, salt, "0x"))
+          .to.be.revertedWith(`ERC20: transfer amount exceeds balance`);
+
+        const proposerRole = await timelock.PROPOSER_ROLE();
+        await usdc.transfer(alice.address, 12345);
+        await expect(minter.connect(alice).mint(usdc.address, 10000, 8888, salt, "0x"))
+          .to.be.revertedWith(`AccessControl: account ${minter.address.toLowerCase()} is missing role ${proposerRole}`);
+      });
+
+      it("mint: ok", async function () {
+        const { timelock, stbt, minter, usdc, executor, alice, bob, cindy,
+          grantRoleByTL, setPermisionByTL } = await loadFixture(deployMinterFixture);
+
+        const receiverAndRate = BigInt(bob.address) << 96n | BigInt(ethers.utils.parseUnits('0.02'));
+        await minter.setCoinInfo(usdc.address, receiverAndRate);
+        await minter.setDepositConfig(usdc.address, {needDivAdjust:false, adjustUnit:1, minimumDepositAmount:9999});
+        await usdc.connect(alice).approve(minter.address, 20000);
+        await usdc.transfer(alice.address, 12345);
+
+        // await timelock.grantRole(proposerRole, minter.address);
+        const proposerRole = await timelock.PROPOSER_ROLE();
+        await grantRoleByTL(proposerRole, minter.address);
+
+        // await stbt.setPermission(alice.address, [true, true, 0]);
+        await setPermisionByTL(alice.address, [true, true, 0]);
+
+        // schedule
+        const salt = ethers.utils.formatBytes32String('hello');
+        const tlSalt = ethers.utils.keccak256(ethers.utils.solidityPack(["bytes32", "uint"], [salt, 0]));
+        const tlData = stbt.interface.encodeFunctionData("issue", [alice.address, 9800, "0xdddd"]);
+        await expect(minter.connect(alice).mint(usdc.address, 10000, 8888, salt, "0xdddd"))
+          .to.changeTokenBalance(usdc, alice.address, -10000)
+          .to.changeTokenBalance(usdc, bob.address, 10000)
+          .to.emit(minter, 'Mint').withArgs(alice.address, usdc.address, 1, 10000, 9800, tlSalt, tlData)
+          ;
+        expect(await minter.nonceForMint()).to.equal(1);
+
+        // execute
+        await time.increase(8 * 3600);
+        await expect(timelock.connect(executor).execute(
+          stbt.address, // target
+          0, // value, 
+          tlData, // data
+          ethers.utils.formatBytes32String(''), // predecessor
+          tlSalt, // salt
+        )).to.changeTokenBalance(stbt, alice.address, 9800);
+      });
+
+      it("redeem: errors", async function () {
+        const { timelock, stbt, minter, usdc, pool, alice,
+          setPermisionByTL, grantRoleByTL } = await loadFixture(deployMinterFixture);
+        const salt = ethers.utils.formatBytes32String('hello');
+        const proposerRole = await timelock.PROPOSER_ROLE();
+
+        await minter.setRedeemConfig(usdc.address, {needDivAdjust:false, adjustUnit:1, minimumRedeemAmount:10000});
+        await expect(minter.connect(alice).redeem(123, usdc.address, salt, "0xdddd"))
+          .to.be.revertedWith('MINTER: REDEEM_AMOUNT_TOO_SMALL');
+
+        await expect(minter.connect(alice).redeem(10001, usdc.address, salt, "0xdddd"))
+          .to.be.revertedWith('STBT: TRANSFER_AMOUNT_EXCEEDS_ALLOWANCE');
+
+        await stbt.connect(alice).approve(minter.address, 20000);
+        await expect(minter.connect(alice).redeem(10001, usdc.address, salt, "0xdddd"))
+          .to.be.revertedWith('STBT: NO_SEND_PERMISSION');
+
+        // await stbt.setPermission(alice.address, [true, true, 0]);        
+        await setPermisionByTL(alice.address, [true, true, 0]);
+        await expect(minter.connect(alice).redeem(10001, usdc.address, salt, "0xdddd"))
+          .to.be.revertedWith('STBT: NO_RECEIVE_PERMISSION');
+
+        // await stbt.setPermission(pool.address, [true, true, 0]);        
+        await setPermisionByTL(pool.address, [true, true, 0]);
+        await expect(minter.connect(alice).redeem(10001, usdc.address, salt, "0xdddd"))
+          .to.be.revertedWith(`AccessControl: account ${minter.address.toLowerCase()} is missing role ${proposerRole}`);
+
+        // await timelock.grantRole(proposerRole, minter.address);
+        await grantRoleByTL(proposerRole, minter.address);
+        await minter.connect(alice).redeem(10001, usdc.address, salt, "0xdddd"); // ok
+      });
+
+      it("redeem&settle: ok", async function () {
+        const { timelock, stbt, minter, usdc, pool, executor, alice,
+          setPermisionByTL, grantRoleByTL, issueByTL } = await loadFixture(deployMinterFixture);
+        const salt = ethers.utils.formatBytes32String('hello');
+        const proposerRole = await timelock.PROPOSER_ROLE();
+
+        // prepare
+        await grantRoleByTL(proposerRole, minter.address);
+        await setPermisionByTL(pool.address, [true, true, 0]);
+        await setPermisionByTL(alice.address, [true, true, 0]);
+        await stbt.connect(alice).approve(minter.address, 20000);
+        await stbt.connect(pool).approve(timelock.address, 20000);
+        await issueByTL(alice.address, 20000, "0xffff");
+        await minter.setRedeemConfig(usdc.address, {needDivAdjust:false, adjustUnit:1, minimumRedeemAmount:10000});
+
+        // schedule redeem
+        await expect(minter.connect(alice).redeem(12345, usdc.address, salt, "0xdddd"))
+          .to.changeTokenBalance(stbt, alice.address, -12345)
+          .to.changeTokenBalance(stbt, pool.address, 12345)
+          .to.emit(minter, 'Redeem').withArgs(alice.address, usdc.address, 0, 12345, anyValue, anyValue);
+        expect(await minter.nonceForRedeem()).to.equal(1);
+        expect(await minter.redeemTargetMap(0)).to.equal(alice.address);
+
+        // execute redeem
+        await time.increase(8 * 3600);
+        await timelock.connect(executor).execute(
+          stbt.address, // target
+          0, // value, 
+          stbt.interface.encodeFunctionData("redeemFrom", [pool.address, 12345, "0xdddd"]), // data
+          ethers.utils.formatBytes32String(''), // predecessor
+          ethers.utils.keccak256(ethers.utils.solidityPack(["bytes32", "uint"], [salt, 0])), // salt
+        );
+
+        // redeemSettle
+        const amt = 12345;
+        const nonce = 0;
+        const redeemTxId = ethers.utils.formatBytes32String("redeemTxId");
+        const redeemServiceFeeRate = 50000;
+        const executionPrice = 80000;
+        await usdc.transfer(minter.address, 20000);
+        await expect(minter.redeemSettle(usdc.address, amt, nonce, redeemTxId, redeemServiceFeeRate, executionPrice))
+          .to.changeTokenBalance(usdc, minter.address, -amt)
+          .to.changeTokenBalance(usdc, alice.address, amt)
+          .to.emit(minter, 'Settle').withArgs(alice.address, amt, redeemTxId, redeemServiceFeeRate, executionPrice);
+        expect(await minter.redeemTargetMap(0)).to.equal(zeroAddr);
+      });
+
+      it("redeemSettle: errors", async function () {
+        const { timelock, stbt, minter, usdc, pool, alice } = await loadFixture(deployMinterFixture);
+
+        const amt = 12345;
+        const nonce = 100;
+        const redeemTxId = ethers.utils.formatBytes32String("redeemTxId");
+        const redeemServiceFeeRate = 50000;
+        const executionPrice = 80000;
+
+        await expect(minter.connect(alice).redeemSettle(usdc.address, amt, nonce, redeemTxId, redeemServiceFeeRate, executionPrice))
+          .to.be.revertedWith('Ownable: caller is not the owner');
+        await expect(minter.redeemSettle(usdc.address, amt, nonce, redeemTxId, redeemServiceFeeRate, executionPrice))
+          .to.be.revertedWith('MINTER: NULL_TARGET');
+      });
+
+      it("rescue", async function () {
+        const { timelock, stbt, minter, usdc, pool, executor, alice,
+          setPermisionByTL, grantRoleByTL, issueByTL } = await loadFixture(deployMinterFixture);
+        const salt = ethers.utils.formatBytes32String('hello');
+        const proposerRole = await timelock.PROPOSER_ROLE();
+
+        // redeem
+        await grantRoleByTL(proposerRole, minter.address);
+        await setPermisionByTL(pool.address, [true, true, 0]);
+        await setPermisionByTL(alice.address, [true, true, 0]);
+        await stbt.connect(alice).approve(minter.address, 20000);
+        await stbt.connect(pool).approve(timelock.address, 20000);
+        await issueByTL(alice.address, 20000, "0xffff");
+        await minter.connect(alice).redeem(12345, usdc.address, salt, "0xdddd");
+
+        await expect(minter.connect(alice).rescue(usdc.address, alice.address, 12345))
+          .to.be.revertedWith('Ownable: caller is not the owner');
+        await expect(minter.rescue(usdc.address, alice.address, 12345))
+          .to.be.revertedWith('MINTER: PENDING_REDEEM');
+
+        // redeemSettle
+        const amt = 12345;
+        const nonce = 0;
+        const redeemTxId = ethers.utils.formatBytes32String("redeemTxId");
+        const redeemServiceFeeRate = 50000;
+        const executionPrice = 80000;
+        await usdc.transfer(minter.address, 20000);
+        await minter.redeemSettle(usdc.address, amt, nonce, redeemTxId, redeemServiceFeeRate, executionPrice);
+
+        // rescue usdc
+        await usdc.transfer(minter.address, 50000);
+        await expect(minter.rescue(usdc.address, alice.address, 12345))
+          .to.changeTokenBalance(usdc, alice.address, 12345)
+          .to.changeTokenBalance(usdc, minter.address, -12345);
+
+        // rescue ether
+        // await alice.sendTransaction({to: minter.address, value: 50000});
+        // await expect(minter.rescue(zeroAddr, alice.address, 12345))
+        //   .to.changeEtherBalance(alice.address, 12345)
+        //   .to.changeEtherBalance(minter.address, -12345);
+      });
+
+    });
+
+  });
+
+});
+
+describe("WSTBT", function () {
+
+  async function deployWstbtFixture() {
+    const [owner, alice, bob, cindy] = await ethers.getSigners();
+
+    const STBT = await ethers.getContractFactory("STBT");
+    const stbt = await STBT.deploy();
+    await stbt.setIssuer(owner.address);
+    await stbt.setModerator(owner.address);
+    await stbt.setController(owner.address);
+    await stbt.setPermission(alice.address, [true, true, 0]);
+    await stbt.issue(alice.address, 10000, "0x");
+    await stbt.setMaxDistributeRatio(ethers.utils.parseUnits("0.1"))
+    await stbt.distributeInterests(200, 123, 456);
+
+    const WSTBT = await ethers.getContractFactory("WSTBT");
+    let wstbt = await WSTBT.deploy("wSTBT", "WSTBT", stbt.address);
+
+    // const UpgradeableWSTBT = await ethers.getContractFactory("UpgradeableWSTBT");
+    // const proxy = await UpgradeableWSTBT.deploy(wstbt.address);
+    // wstbt = wstbt.attach(proxy.address);
+    await stbt.setPermission(wstbt.address, [true, true, 0]);
+
+    return {stbt, wstbt, owner, alice, bob, cindy};
+  }
+
+  it("deploy", async function () {
+    const {stbt, wstbt, owner, alice} = await loadFixture(deployWstbtFixture);
+    expect(await wstbt.totalSupply()).to.equal(0);
+    expect(await wstbt.name()).to.equal("wSTBT");
+    expect(await wstbt.symbol()).to.equal("WSTBT");
+    expect(await wstbt.stbtAddress()).to.equal(stbt.address);
+  });
+
+  it("wrap: errors", async function () {
+    const {stbt, wstbt, owner, alice} = await loadFixture(deployWstbtFixture);
+
+    await expect(wstbt.connect(alice).wrap(0))
+      .to.be.revertedWith('WSTBT: ZERO_AMOUNT');
+
+    await expect(wstbt.connect(alice).wrap(1234))
+      .to.be.revertedWith('STBT: TRANSFER_AMOUNT_EXCEEDS_ALLOWANCE');
+
+    await stbt.connect(alice).approve(wstbt.address, 20000);
+    await expect(wstbt.connect(alice).wrap(12345))
+      .to.be.revertedWith('STBT: TRANSFER_AMOUNT_EXCEEDS_BALANCE');
+  });
+
+  it("wrap: ok", async function () {
+    const {stbt, wstbt, owner, alice} = await loadFixture(deployWstbtFixture);
+    await stbt.connect(alice).approve(wstbt.address, 20000);
+
+    await expect(wstbt.connect(alice).wrap(5000))
+      .to.emit(wstbt, "Transfer").withArgs(zeroAddr, alice.address, 4901)
+      .to.emit(wstbt, "Wrap").withArgs(alice.address, 5000, 4901)
+      .to.changeTokenBalance(stbt, alice.address, -5000)
+      .to.changeTokenBalance(stbt, wstbt.address, 4999)
+      .to.changeTokenBalance(wstbt, alice.address, 4901)
+      ;
+  });
+
+  it("unswap: errors", async function () {
+    const {stbt, wstbt, owner, alice} = await loadFixture(deployWstbtFixture);
+
+    await expect(wstbt.connect(alice).unwrap(0))
+      .to.be.revertedWith('WSTBT: ZERO_AMOUNT');
+
+    await expect(wstbt.connect(alice).unwrap(1234))
+      .to.be.revertedWith('STBT: TRANSFER_AMOUNT_EXCEEDS_BALANCE');
+  });
+
+  it("unswap: ok", async function () {
+    const {stbt, wstbt, owner, alice} = await loadFixture(deployWstbtFixture);
+
+    await stbt.connect(alice).approve(wstbt.address, 20000);
+    await wstbt.connect(alice).wrap(5000);
+    await expect(wstbt.connect(alice).unwrap(2000))
+      .to.emit(wstbt, "Transfer").withArgs(alice.address, zeroAddr, 2000)
+      .to.emit(wstbt, "Unwrap").withArgs(alice.address, 2040, 2000)
+      .to.changeTokenBalance(stbt, alice.address, 2040)
+      .to.changeTokenBalance(stbt, wstbt.address, -2040)
+      .to.changeTokenBalance(wstbt, alice.address, -2000)
+      ;
+  });
+
+  it("getters", async function () {
+    const {stbt, wstbt, owner, alice} = await loadFixture(deployWstbtFixture);
+
+    expect(await wstbt.getWstbtByStbt(12345)).to.equal(await stbt.getSharesByAmount(12345));
+    expect(await wstbt.getStbtByWstbt(12345)).to.equal(await stbt.getAmountByShares(12345));
+    expect(await wstbt.stbtPerToken()).to.equal(await stbt.getAmountByShares(ethers.utils.parseUnits("1")));
+    expect(await wstbt.tokensPerStbt()).to.equal(await stbt.getSharesByAmount(ethers.utils.parseUnits("1")));
+  });
+
+  it("transfer: errors", async function () {
+    const {stbt, wstbt, owner, alice, bob, cindy} = await loadFixture(deployWstbtFixture);
+
+    await expect(wstbt.connect(bob).transfer(cindy.address, 123))
+      .to.be.revertedWith('WSTBT: NO_SEND_PERMISSION');
+
+    await stbt.setPermission(bob.address, [true, true, 0]);
+    await expect(wstbt.connect(bob).transfer(cindy.address, 123))
+      .to.be.revertedWith('WSTBT: NO_RECEIVE_PERMISSION');
+
+    await stbt.setPermission(cindy.address, [true, true, 0]);
+    await expect(wstbt.connect(bob).transfer(cindy.address, 123))
+      .to.be.revertedWith('ERC20: transfer amount exceeds balance');
+  });
+
+  it("transfer: ok", async function () {
+    const {stbt, wstbt, owner, alice, bob} = await loadFixture(deployWstbtFixture);
+    await stbt.setPermission(bob.address, [true, true, 0]);
+    await stbt.connect(alice).approve(wstbt.address, 20000);
+    await wstbt.connect(alice).wrap(5000);
+
+    await expect(wstbt.connect(alice).transfer(bob.address, 123))
+      .to.emit(wstbt, "Transfer").withArgs(alice.address, bob.address, 123)
+      .to.changeTokenBalance(wstbt, alice.address, -123)
+      .to.changeTokenBalance(wstbt, bob.address, 123)
+      ;
+  });
+
+  it("transferFrom: errors", async function () {
+    const {stbt, wstbt, owner, alice, bob, cindy} = await loadFixture(deployWstbtFixture);
+
+    await expect(wstbt.connect(alice).transferFrom(bob.address, cindy.address, 234))
+      .to.be.revertedWith('WSTBT: NO_SEND_PERMISSION');
+
+    await stbt.setPermission(bob.address, [true, true, 0]);
+    await expect(wstbt.connect(alice).transferFrom(bob.address, cindy.address, 234))
+      .to.be.revertedWith('WSTBT: NO_RECEIVE_PERMISSION');
+
+    await stbt.setPermission(cindy.address, [true, true, 0]);
+    await expect(wstbt.connect(alice).transferFrom(bob.address, cindy.address, 234))
+      .to.be.revertedWith('ERC20: insufficient allowance');
+
+    await wstbt.connect(bob).approve(alice.address, 12345);
+    await expect(wstbt.connect(alice).transferFrom(bob.address, cindy.address, 234))
+      .to.be.revertedWith('ERC20: transfer amount exceeds balance');
+  });
+
+  it("transferFrom: ok", async function () {
+    const {stbt, wstbt, owner, alice, bob, cindy} = await loadFixture(deployWstbtFixture);
+    await stbt.setPermission(bob.address, [true, true, 0]);
+    await stbt.setPermission(cindy.address, [true, true, 0]);
+    await wstbt.connect(bob).approve(alice.address, 12345);
+    await stbt.issue(bob.address, 10000, "0x");
+    await stbt.connect(bob).approve(wstbt.address, 20000);
+    await wstbt.connect(bob).wrap(5000);
+
+    await expect(wstbt.connect(alice).transferFrom(bob.address, cindy.address, 234))
+      .to.emit(wstbt, "Transfer").withArgs(bob.address, cindy.address, 234)
+      .to.changeTokenBalance(wstbt, bob.address, -234)
+      .to.changeTokenBalance(wstbt, cindy.address, 234)
+      ;
+  });
+
+  it("controllerTransfer: errors", async function () {
+    const {stbt, wstbt, owner, alice, bob, cindy} = await loadFixture(deployWstbtFixture);
+
+    await expect(wstbt.connect(alice).controllerTransfer(bob.address, cindy.address, 345, "0x", "0x"))
+      .to.be.revertedWith('WSTBT: NOT_CONTROLLER');
+
+    await expect(wstbt.connect(owner).controllerTransfer(bob.address, cindy.address, 345, "0x", "0x"))
+      .to.be.revertedWith('ERC20: transfer amount exceeds balance');
+  });
+
+  it("controllerTransfer: ok", async function () {
+    const {stbt, wstbt, owner, alice, bob} = await loadFixture(deployWstbtFixture);
+    await stbt.connect(alice).approve(wstbt.address, 20000);
+    await wstbt.connect(alice).wrap(5000);
+
+    await expect(wstbt.connect(owner).controllerTransfer(alice.address, bob.address, 345, "0xdddd", "0xeeee"))
+      .to.changeTokenBalance(wstbt, alice.address, -345)
+      .to.changeTokenBalance(wstbt, bob.address, 345)
+      .to.emit(wstbt, "Transfer").withArgs(alice.address, bob.address, 345)
+      .to.emit(wstbt, "ControllerTransfer").withArgs(owner.address, alice.address, bob.address, 345, "0xdddd", "0xeeee")
+      ;
   });
 
 });

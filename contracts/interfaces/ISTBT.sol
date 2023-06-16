@@ -64,13 +64,14 @@ interface IERC1594 is IERC20 {
     function canTransferFrom(address _from, address _to, uint256 _value, bytes calldata _data) external view returns (bool, uint8, bytes32);
 }
 
+struct Permission {
+    bool sendAllowed; // default: true
+    bool receiveAllowed;
+    // Address holder’s KYC will be validated till this time, after that the holder needs to re-KYC.
+    uint64 expiryTime; // default:0 validated forever
+}
+
 interface ISTBT is IERC20, IERC20Metadata, IERC1594, IERC1643, IERC1644 {
-    struct Permission {
-        bool sendAllowed; // default: true
-        bool receiveAllowed;
-        // Address holder’s KYC will be validated till this time, after that the holder needs to re-KYC.
-        uint64 expiryTime; // default:0 validated forever
-    }
     function issuer() external view returns (address); 
     function controller() external view returns (address); 
     function moderator() external view returns (address); 
@@ -97,5 +98,6 @@ interface ISTBT is IERC20, IERC20Metadata, IERC1594, IERC1643, IERC1644 {
 
     function sharesOf(address _account) external view returns (uint256);
     function getSharesByAmount(uint256 _amount) external view returns (uint256 result);
+    function getSharesByAmountRoundUp(uint256 _amount) external view returns (uint256 result);
     function getAmountByShares(uint256 _shares) external view returns (uint256 result);
 }

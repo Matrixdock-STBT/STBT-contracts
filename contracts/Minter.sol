@@ -5,18 +5,31 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/utils/structs/EnumerableMap.sol";
 
+import "./interfaces/ISTBT.sol";
 import "./interfaces/IStbtTimelockController.sol";
 
 contract Minter is Ownable {
 	using EnumerableMap for EnumerableMap.AddressToUintMap;
+
+	struct DepositConfig {
+		bool   needDivAdjust;
+		uint96 adjustUnit;
+		uint96 minimumDepositAmount;
+	}
+	
+	struct RedeemConfig {
+		bool   needDivAdjust;
+		uint96 adjustUnit;
+		uint96 minimumRedeemAmount;
+	}
 	
 	address public timeLockContract;
 	address public targetContract;
 	address public poolAccount;
 	uint public nonceForMint;
 	uint public nonceForRedeem;
-	mapping(address => uint) public minimumDepositAmount;
-	mapping(address => uint) public minimumRedeemAmount;
+	mapping(address => DepositConfig) public depositConfigMap;
+	mapping(address => RedeemConfig) public redeemConfigMap;
 	mapping(address => uint) public redeemFeeRateMap;
 	mapping(uint => address) public redeemTargetMap;
 	uint public depositPeriod;
@@ -46,22 +59,22 @@ contract Minter is Ownable {
 		return purchaseInfoMap.get(coin);
 	}
 
-	function getCoinsInfo() external view returns (address[] memory coinList, uint[] memory infoList) {
+	function getCoinsInfo() external view returns (address[] memory coinList, uint[] memory receiverAndRateList) {
 		coinList = new address[](purchaseInfoMap.length());
-		infoList = new uint[](purchaseInfoMap.length());
+		receiverAndRateList = new uint[](purchaseInfoMap.length());
 		for(uint i=0; i<coinList.length; i++) {
-			(address coin, uint rate) = purchaseInfoMap.at(i);
+			(address coin, uint reveiverAndRate) = purchaseInfoMap.at(i);
 			coinList[i] = coin;
-			infoList[i] = rate;
+			receiverAndRateList[i] = reveiverAndRate;
 		}
 	}
 
-	function setMinimumDepositAmount(address token, uint amount) onlyOwner external {
-		minimumDepositAmount[token] = amount;
+	function setDepositConfig(address token, DepositConfig calldata config) onlyOwner external {
+		depositConfigMap[token] = config;
 	}
 
-	function setMinimumRedeemAmount(address token, uint amount) onlyOwner external {
-		minimumRedeemAmount[token] = amount;
+	function setRedeemConfig(address token, RedeemConfig calldata config) onlyOwner external {
+		redeemConfigMap[token] = config;
 	}
 
 	function setRedeemFeeRate(address token, uint r) onlyOwner external {
@@ -95,13 +108,20 @@ contract Minter is Ownable {
 	// extraData: will be used to call STBT's issue functions
 	function mint(address token, uint depositAmount, uint minProposedAmount, bytes32 salt,
 		      bytes calldata extraData) external {
+		{
+		(, bool receiveAllowed, uint64 expiryTime) = ISTBT(targetContract).permissions(msg.sender);
+		require(receiveAllowed, 'MINTER: NO_RECEIVE_PERMISSION');
+		require(expiryTime == 0 || expiryTime > block.timestamp, 'MINTER: RECEIVE_PERMISSION_EXPIRED');
+		}
+
 		uint receiverAndRate = purchaseInfoMap.get(token);
 		require(receiverAndRate != 0, "MINTER: TOKEN_NOT_SUPPORTED");
 		address receiver = address(uint160(receiverAndRate>>96));
 		uint feeRate = uint96(receiverAndRate);
-		uint minAmount = minimumDepositAmount[token];
-		require(depositAmount >= minAmount, "MINTER: DEPOSIT_AMOUNT_TOO_SMALL");
+		DepositConfig memory config = depositConfigMap[token];
+		require(depositAmount >= config.minimumDepositAmount, "MINTER: DEPOSIT_AMOUNT_TOO_SMALL");
 		uint proposeAmount = depositAmount*(UNIT-feeRate)/UNIT;
+		proposeAmount = config.needDivAdjust? proposeAmount / config.adjustUnit : proposeAmount * config.adjustUnit;
 		require(proposeAmount >= minProposedAmount, "MINTER: PROPOSE_AMOUNT_TOO_SMALL");
 		IERC20(token).transferFrom(msg.sender, receiver, depositAmount);
 		bytes memory data = abi.encodeWithSignature("issue(address,uint256,bytes)",
@@ -117,8 +137,9 @@ contract Minter is Ownable {
 	// salt: a random number that can affect TimelockController's input salt
 	// extraData: will be used to call STBT's issue functions
 	function redeem(uint amount, address token, bytes32 salt, bytes calldata extraData) external {
-		uint minAmount = minimumRedeemAmount[token];
-		require(amount >= minAmount, "MINTER: REDEEM_AMOUNT_TOO_SMALL");
+		RedeemConfig memory config = redeemConfigMap[token];
+		require(amount >= config.minimumRedeemAmount, "MINTER: REDEEM_AMOUNT_TOO_SMALL");
+		amount = config.needDivAdjust? amount / config.adjustUnit : amount * config.adjustUnit;
 		bytes memory data = abi.encodeWithSignature("redeemFrom(address,uint256,bytes)",
 							    poolAccount, amount, extraData);
 		IERC20(targetContract).transferFrom(msg.sender, poolAccount, amount);
