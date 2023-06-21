@@ -27,7 +27,8 @@ contract Minter is Ownable {
 	address public targetContract;
 	address public poolAccount;
 	uint public nonceForMint;
-	uint public nonceForRedeem;
+	uint64 public nonceForRedeem;
+	uint64 public nonceForRedeemSettled;
 	mapping(address => DepositConfig) public depositConfigMap;
 	mapping(address => RedeemConfig) public redeemConfigMap;
 	mapping(address => uint) public redeemFeeRateMap;
@@ -105,7 +106,7 @@ contract Minter is Ownable {
 	// depositAmount: how much to deposit?
 	// minProposedAmount: the sender use this value to protect against sudden rise of feeRate
 	// salt: a random number that can affect TimelockController's input salt
-	// extraData: will be used to call STBT's issue functions
+	// extraData: will be used to call STBT's issue function
 	function mint(address token, uint depositAmount, uint minProposedAmount, bytes32 salt,
 		      bytes calldata extraData) external {
 		{
@@ -126,27 +127,28 @@ contract Minter is Ownable {
 		IERC20(token).transferFrom(msg.sender, receiver, depositAmount);
 		bytes memory data = abi.encodeWithSignature("issue(address,uint256,bytes)",
 							    msg.sender, proposeAmount, extraData);
-		salt = keccak256(abi.encodePacked(salt, nonceForMint));
+		uint _nonceForMint = nonceForMint;
+		salt = keccak256(abi.encodePacked(salt, _nonceForMint));
 		nonceForMint = nonceForMint + 1;
 		IStbtTimelockController(timeLockContract).schedule(targetContract, 0, data, bytes32(""), salt, 0);
-		emit Mint(msg.sender, token, nonceForMint, depositAmount, proposeAmount, salt, data);
+		emit Mint(msg.sender, token, _nonceForMint, depositAmount, proposeAmount, salt, data);
 	}
 
 	// token: which token to receive after redeem?
 	// amount: how much STBT to deposit?
 	// salt: a random number that can affect TimelockController's input salt
-	// extraData: will be used to call STBT's issue functions
+	// extraData: will be used to call STBT's redeemFrom function
 	function redeem(uint amount, address token, bytes32 salt, bytes calldata extraData) external {
 		RedeemConfig memory config = redeemConfigMap[token];
 		require(amount >= config.minimumRedeemAmount, "MINTER: REDEEM_AMOUNT_TOO_SMALL");
-		amount = config.needDivAdjust? amount / config.adjustUnit : amount * config.adjustUnit;
+		IERC20(targetContract).transferFrom(msg.sender, poolAccount, amount);
 		bytes memory data = abi.encodeWithSignature("redeemFrom(address,uint256,bytes)",
 							    poolAccount, amount, extraData);
-		IERC20(targetContract).transferFrom(msg.sender, poolAccount, amount);
+		uint adjusted = config.needDivAdjust? amount / config.adjustUnit : amount * config.adjustUnit;
 		salt = keccak256(abi.encodePacked(salt, nonceForRedeem));
 		IStbtTimelockController(timeLockContract).schedule(targetContract, 0, data, bytes32(""), salt, 0);
 		redeemTargetMap[nonceForRedeem] = msg.sender;
-		emit Redeem(msg.sender, token, nonceForRedeem, amount, salt, data);
+		emit Redeem(msg.sender, token, nonceForRedeem, adjusted, salt, data);
 		nonceForRedeem = nonceForRedeem + 1;
 	}
 
@@ -156,8 +158,10 @@ contract Minter is Ownable {
 	// redeemTxId: at which tx did the customer call 'redeem'?
 	// redeemServiceFeeRate: some of the refunded tokens will be deducted as fee
 	// executionPrice: the price of STBT measure by 'token'
-	function redeemSettle(address token, uint amount, uint nonce, bytes32 redeemTxId,
+	function redeemSettle(address token, uint amount, uint64 nonce, bytes32 redeemTxId,
 			      uint redeemServiceFeeRate, uint executionPrice) onlyOwner external {
+		require(nonce == nonceForRedeemSettled + 1, "MINTER: INVALID_NONCE");
+		nonceForRedeemSettled = nonce;
 		address target = redeemTargetMap[nonce];
 		require(target != address(0), "MINTER: NULL_TARGET");
 		IERC20(token).transfer(target, amount);
@@ -167,12 +171,7 @@ contract Minter is Ownable {
 
 	// the rescue ETH or ERC20 tokens which were accidentally sent to this contract
 	function rescue(address token, address receiver, uint amount) onlyOwner external {
-		require(redeemTargetMap[nonceForRedeem-1] == address(0), "MINTER: PENDING_REDEEM");
-		if(token == address(0)) {
-			(bool success,) = receiver.call{value : amount}(new bytes(0));
-			require(success, "MINTER: FAIL_TO_RESCUE_ETH");
-		} else {
-			IERC20(token).transfer(receiver, amount);
-		}
+		require(nonceForRedeemSettled == nonceForRedeem, "MINTER: PENDING_REDEEM");
+		IERC20(token).transfer(receiver, amount);
 	}
 }
