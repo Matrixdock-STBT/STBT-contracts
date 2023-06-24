@@ -120,7 +120,8 @@ contract Minter is Ownable {
 		address receiver = address(uint160(receiverAndRate>>96));
 		uint feeRate = uint96(receiverAndRate);
 		DepositConfig memory config = depositConfigMap[token];
-		require(depositAmount >= config.minimumDepositAmount, "MINTER: DEPOSIT_AMOUNT_TOO_SMALL");
+		require(config.minimumDepositAmount != 0 &&
+			depositAmount >= config.minimumDepositAmount, "MINTER: DEPOSIT_AMOUNT_TOO_SMALL");
 		uint proposeAmount = depositAmount*(UNIT-feeRate)/UNIT;
 		proposeAmount = config.needDivAdjust? proposeAmount / config.adjustUnit : proposeAmount * config.adjustUnit;
 		require(proposeAmount >= minProposedAmount, "MINTER: PROPOSE_AMOUNT_TOO_SMALL");
