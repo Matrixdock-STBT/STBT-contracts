@@ -140,7 +140,8 @@ contract Minter is Ownable {
 	// extraData: will be used to call STBT's redeemFrom function
 	function redeem(uint amount, address token, bytes32 salt, bytes calldata extraData) external {
 		RedeemConfig memory config = redeemConfigMap[token];
-		require(amount >= config.minimumRedeemAmount, "MINTER: REDEEM_AMOUNT_TOO_SMALL");
+		require(config.minimumRedeemAmount != 0 &&
+			amount >= config.minimumRedeemAmount, "MINTER: REDEEM_AMOUNT_TOO_SMALL");
 		IERC20(targetContract).transferFrom(msg.sender, poolAccount, amount);
 		bytes memory data = abi.encodeWithSignature("redeemFrom(address,uint256,bytes)",
 							    poolAccount, amount, extraData);
