@@ -43,8 +43,8 @@ contract Minter is Ownable {
 		   uint depositAmount, uint proposeAmount, bytes32 salt, bytes data);
 	event Redeem(address indexed requestor, address indexed token, uint indexed nonce, uint amount,
 		    bytes32 salt, bytes data);
-	event Settle(address indexed target, uint amount, bytes32 redeemTxId,
-		     uint redeemServiceFeeRate, uint executionPrice);
+	event Settle(address indexed target,  address indexed token, uint indexed nonce, uint amount,
+		     bytes32 redeemTxId, uint redeemServiceFeeRate, uint executionPrice);
 
 	constructor(address _timeLockContract, address _targetContract, address _poolAccount) Ownable() {
 		timeLockContract = _timeLockContract;
@@ -167,13 +167,13 @@ contract Minter is Ownable {
 		address target = redeemTargetMap[nonce];
 		require(target != address(0), "MINTER: NULL_TARGET");
 		IERC20(token).transfer(target, amount);
-		emit Settle(target, amount, redeemTxId, redeemServiceFeeRate, executionPrice);
+		emit Settle(target, token, nonce, amount, redeemTxId, redeemServiceFeeRate, executionPrice);
 		delete redeemTargetMap[nonce];
 	}
 
 	// the rescue ETH or ERC20 tokens which were accidentally sent to this contract
 	function rescue(address token, address receiver, uint amount) onlyOwner external {
-		require(nonceForRedeemSettled == nonceForRedeem, "MINTER: PENDING_REDEEM");
+		require(nonceForRedeemSettled + 1 == nonceForRedeem, "MINTER: PENDING_REDEEM");
 		IERC20(token).transfer(receiver, amount);
 	}
 }
