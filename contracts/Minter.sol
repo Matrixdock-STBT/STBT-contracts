@@ -50,6 +50,8 @@ contract Minter is Ownable {
 		timeLockContract = _timeLockContract;
 		targetContract = _targetContract;
 		poolAccount = _poolAccount;
+		nonceForMint = 1;
+		nonceForRedeem = 1;
 	}
 
 	function setCoinInfo(address token, uint receiverAndRate) onlyOwner external {
