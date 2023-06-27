@@ -27,7 +27,7 @@ contract Minter is Ownable {
 	address public targetContract;
 	address public poolAccount;
 	uint64 public nonceForRedeem;
-	uint64 public nonceForRedeemSettled;
+	uint64 public countOfRedeemSettled;
 	uint64 public nonceForMint;
 	mapping(address => DepositConfig) public depositConfigMap;
 	mapping(address => RedeemConfig) public redeemConfigMap;
@@ -51,9 +51,9 @@ contract Minter is Ownable {
 		targetContract = _targetContract;
 		poolAccount = _poolAccount;
 		uint64 _nonceStart = uint64(1000 * block.timestamp);
-		nonceForMint = _nonceStart + 1;
-		nonceForRedeem = _nonceStart + 1;
-		nonceForRedeemSettled = _nonceStart;
+		nonceForMint = _nonceStart;
+		nonceForRedeem = _nonceStart;
+		countOfRedeemSettled = _nonceStart;
 	}
 
 	function setCoinInfo(address token, uint receiverAndRate) onlyOwner external {
@@ -166,8 +166,7 @@ contract Minter is Ownable {
 	// executionPrice: the price of STBT measure by 'token'
 	function redeemSettle(address token, uint amount, uint64 nonce, bytes32 redeemTxId,
 			      uint redeemServiceFeeRate, uint executionPrice) onlyOwner external {
-		require(nonce == nonceForRedeemSettled + 1, "MINTER: INVALID_NONCE");
-		nonceForRedeemSettled = nonce;
+		countOfRedeemSettled++;
 		address target = redeemTargetMap[nonce];
 		require(target != address(0), "MINTER: NULL_TARGET");
 		IERC20(token).transfer(target, amount);
@@ -177,7 +176,7 @@ contract Minter is Ownable {
 
 	// the rescue ETH or ERC20 tokens which were accidentally sent to this contract
 	function rescue(address token, address receiver, uint amount) onlyOwner external {
-		require(nonceForRedeemSettled + 1 == nonceForRedeem, "MINTER: PENDING_REDEEM");
+		require(countOfRedeemSettled == nonceForRedeem, "MINTER: PENDING_REDEEM");
 		IERC20(token).transfer(receiver, amount);
 	}
 }
