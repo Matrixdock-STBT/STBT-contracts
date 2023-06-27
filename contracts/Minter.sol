@@ -26,9 +26,9 @@ contract Minter is Ownable {
 	address public timeLockContract;
 	address public targetContract;
 	address public poolAccount;
-	uint public nonceForMint;
 	uint64 public nonceForRedeem;
 	uint64 public nonceForRedeemSettled;
+	uint64 public nonceForMint;
 	mapping(address => DepositConfig) public depositConfigMap;
 	mapping(address => RedeemConfig) public redeemConfigMap;
 	mapping(address => uint) public redeemFeeRateMap;
@@ -46,10 +46,11 @@ contract Minter is Ownable {
 	event Settle(address indexed target,  address indexed token, uint indexed nonce, uint amount,
 		     bytes32 redeemTxId, uint redeemServiceFeeRate, uint executionPrice);
 
-	constructor(address _timeLockContract, address _targetContract, address _poolAccount, uint _nonceStart) Ownable() {
+	constructor(address _timeLockContract, address _targetContract, address _poolAccount) Ownable() {
 		timeLockContract = _timeLockContract;
 		targetContract = _targetContract;
 		poolAccount = _poolAccount;
+		uint64 _nonceStart = uint64(1000 * block.timestamp);
 		nonceForMint = _nonceStart + 1;
 		nonceForRedeem = _nonceStart + 1;
 		nonceForRedeemSettled = _nonceStart;
@@ -131,9 +132,9 @@ contract Minter is Ownable {
 		IERC20(token).transferFrom(msg.sender, receiver, depositAmount);
 		bytes memory data = abi.encodeWithSignature("issue(address,uint256,bytes)",
 							    msg.sender, proposeAmount, extraData);
-		uint _nonceForMint = nonceForMint;
+		uint64 _nonceForMint = nonceForMint;
 		salt = keccak256(abi.encodePacked(salt, _nonceForMint));
-		nonceForMint = nonceForMint + 1;
+		nonceForMint = _nonceForMint + 1;
 		IStbtTimelockController(timeLockContract).schedule(targetContract, 0, data, bytes32(""), salt, 0);
 		emit Mint(msg.sender, token, _nonceForMint, depositAmount, proposeAmount, salt, data);
 	}
