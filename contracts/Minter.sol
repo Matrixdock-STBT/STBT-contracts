@@ -46,12 +46,13 @@ contract Minter is Ownable {
 	event Settle(address indexed target,  address indexed token, uint indexed nonce, uint amount,
 		     bytes32 redeemTxId, uint redeemServiceFeeRate, uint executionPrice);
 
-	constructor(address _timeLockContract, address _targetContract, address _poolAccount) Ownable() {
+	constructor(address _timeLockContract, address _targetContract, address _poolAccount, uint _nonceStart) Ownable() {
 		timeLockContract = _timeLockContract;
 		targetContract = _targetContract;
 		poolAccount = _poolAccount;
-		nonceForMint = 1;
-		nonceForRedeem = 1;
+		nonceForMint = _nonceStart + 1;
+		nonceForRedeem = _nonceStart + 1;
+		nonceForRedeemSettled = _nonceStart;
 	}
 
 	function setCoinInfo(address token, uint receiverAndRate) onlyOwner external {
