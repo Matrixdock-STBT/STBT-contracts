@@ -61,6 +61,7 @@ contract WSTBT is ERC20Permit {
 
     function wrap(uint256 stbtAmount) public returns (uint wrappedShares) {
         require(stbtAmount != 0, "WSTBT: ZERO_AMOUNT");
+        _checkReceivePermission(msg.sender);
         wrappedShares = ISTBT(stbtAddress).getSharesByAmount(stbtAmount);
         ISTBT(stbtAddress).transferFrom(msg.sender, address(this), stbtAmount);
         _mint(msg.sender, wrappedShares);
@@ -69,6 +70,7 @@ contract WSTBT is ERC20Permit {
 
     function unwrap(uint256 unwrappedShares) public returns (uint stbtAmount) {
         require(unwrappedShares != 0, "WSTBT: ZERO_AMOUNT");
+        _checkSendPermission(msg.sender);
         stbtAmount = ISTBT(stbtAddress).getAmountByShares(unwrappedShares);
         ISTBT(stbtAddress).transfer(msg.sender, stbtAmount);
         _burn(msg.sender, unwrappedShares);

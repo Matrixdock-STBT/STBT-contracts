@@ -57,6 +57,7 @@ contract Minter is Ownable {
 	}
 
 	function setCoinInfo(address token, uint receiverAndRate) onlyOwner external {
+		require(uint96(receiverAndRate) < UNIT, "MINTER: FEE_RATE_TOO_LARGE");
 		purchaseInfoMap.set(token, receiverAndRate);
 	}
 
@@ -169,9 +170,9 @@ contract Minter is Ownable {
 		virtualCountOfRedeemSettled++;
 		address target = redeemTargetMap[nonce];
 		require(target != address(0), "MINTER: NULL_TARGET");
+		delete redeemTargetMap[nonce];
 		IERC20(token).transfer(target, amount);
 		emit Settle(target, token, nonce, amount, redeemTxId, redeemServiceFeeRate, executionPrice);
-		delete redeemTargetMap[nonce];
 	}
 
 	// the rescue ETH or ERC20 tokens which were accidentally sent to this contract
