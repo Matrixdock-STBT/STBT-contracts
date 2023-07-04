@@ -72,6 +72,9 @@ struct Permission {
 }
 
 interface ISTBT is IERC20, IERC20Metadata, IERC1594, IERC1643, IERC1644 {
+    event InterestsDistributed(int interest, uint newTotalSupply, uint interestFromTime, uint interestToTime);
+    event TransferShares(address indexed from, address indexed to, uint256 sharesValue);
+
     function issuer() external view returns (address); 
     function controller() external view returns (address); 
     function moderator() external view returns (address); 

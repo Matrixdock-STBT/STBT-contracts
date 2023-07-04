@@ -1,131 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0
-pragma solidity ^0.8.0;
+pragma solidity ^0.8.7;
 
 import "@openzeppelin/contracts/proxy/Proxy.sol";
 import "@openzeppelin/contracts/governance/TimelockController.sol";
+import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 
 import "./interfaces/ISTBT.sol";
 
-contract StbtTimelockController is TimelockController {
 
-    mapping (bytes4 => uint256) public delayMap;
-
-    constructor(
-        address[] memory proposers,
-        address[] memory executors,
-        address admin,
-        bytes4[] memory selectors,
-        uint256[] memory delays
-    ) TimelockController(0/*minDelay*/, proposers, executors, admin) {
-        require(selectors.length == delays.length, 'TimelockController: SELECTORS_DELAYS_LEN_NOT_MATCH');
-        for (uint256 i = 0; i < selectors.length; i++) {
-            delayMap[selectors[i]] = delays[i];
-        }
-    }
-
-    function updateDelay(uint256 /*newDelay*/) external override pure {
-        revert('TimelockController: UNSUPPORTED');
-    }
-
-    function scheduleBatch(
-        address[] calldata /*targets*/,
-        uint256[] calldata /*values*/,
-        bytes[] calldata /*payloads*/,
-        bytes32 /*predecessor*/,
-        bytes32 /*salt*/,
-        uint256 /*delay*/
-    ) public override pure {
-        revert('TimelockController: UNSUPPORTED');
-    }
-
-    function schedule(
-        address target,
-        uint256 value,
-        bytes calldata data,
-        bytes32 predecessor,
-        bytes32 salt,
-        uint256 /*delay*/
-    ) public override onlyRole(PROPOSER_ROLE) {
-
-        bytes4 sel = bytes4(data[0:4]);
-        uint256 delay = delayMap[sel];
-        require(delay > 0, 'TimelockController: UNKNOWN_SELECTOR');
-
-        super.schedule(target, value, data, predecessor, salt, delay);
-    }
-
-    // function schedule2(
-    //     address target,
-    //     bytes calldata data,
-    //     bytes32 predecessor,
-    //     bytes32 salt
-    // ) public {
-    //     schedule(target, 0, data, predecessor, salt, 0);
-    // }
-
-    // function cancelOperation(
-    //     address target,
-    //     uint256 value,
-    //     bytes calldata data,
-    //     bytes32 predecessor,
-    //     bytes32 salt
-    // ) public onlyRole(CANCELLER_ROLE) {
-
-    //     bytes32 id = hashOperation(target, value, data, predecessor, salt);
-    //     cancel(id);
-    // }
-
-    function _execute(
-        address target,
-        uint256 value,
-        bytes calldata data
-    ) internal override {
-        (bool success, ) = target.call{value: value}(data);
-        if (success == false) {
-            assembly {
-                let ptr := mload(0x40)
-                let size := returndatasize()
-                returndatacopy(ptr, 0, size)
-                revert(ptr, size)
-            }
-        }
-    }
-}
-
-contract UpgradeableSTBT is Proxy {
-    // override
-    address public owner;
-    address public issuer;
-    address public controller;
-    address public moderator;
-    // new state below
-    address public implementation;
-
-    constructor(
-        address _owner,
-        address _issuer,
-        address _controller,
-        address _moderator,
-        address _impl
-    ){
-        owner = _owner;
-        issuer = _issuer;
-        controller = _controller;
-        moderator = _moderator;
-        implementation = _impl;
-    }
-
-    function resetImplementation(address _impl) external {
-        require(msg.sender == owner, "STBT: NOT_OWNER");
-        implementation = _impl;
-    }
-
-    function _implementation() internal view override returns (address) {
-        return implementation;
-    }
-}
-
-contract STBT is Ownable, ISTBT {
+contract STBTv2 is Ownable, ISTBT {
     // all the following three roles are contracts of governance/TimelockController.sol
     address public issuer;
     address public controller;
@@ -153,6 +36,8 @@ contract STBT is Ownable, ISTBT {
     mapping(bytes32 => Document) public documents;
     // doc name => doc name index in docNames
     mapping(bytes32 => uint256) public docIndexes;
+
+    AggregatorV3Interface internal reserveFeed;
 
     // EIP-1066 status code
     uint8 private constant Success = 0x01;
@@ -197,6 +82,26 @@ contract STBT is Ownable, ISTBT {
 
     function setPermission(address addr, Permission calldata permission) public onlyModerator {
         permissions[addr] = permission;
+    }
+
+    function setReserveFeed(address addr) public onlyOwner {
+	reserveFeed = AggregatorV3Interface(addr);
+    }
+
+    /**
+     * Returns the latest price
+     */
+    function getLatestReserve() public view returns (int) {
+        // prettier-ignore
+        (
+            /*uint80 roundID*/,
+            int reserve,
+            /*uint startedAt*/,
+            /*uint timeStamp*/,
+            /*uint80 answeredInRound*/
+        ) = reserveFeed.latestRoundData();
+
+        return reserve;
     }
 
     function name() public pure returns (string memory) {
@@ -353,6 +258,7 @@ contract STBT is Ownable, ISTBT {
             require(oldTotalSupply * maxDistributeRatio >= uint(-_distributedInterest) * (10 ** 18), 'STBT: MAX_DISTRIBUTE_RATIO_EXCEEDED');
             newTotalSupply = oldTotalSupply - uint(-_distributedInterest);
         }
+        require(newTotalSupply < uint(getLatestReserve()), "STBT: EXCEED_RESERVE");
         totalSupply = newTotalSupply;
         require(lastDistributeTime + minDistributeInterval < block.timestamp, 'STBT: MIN_DISTRIBUTE_INTERVAL_VIOLATED');
         emit InterestsDistributed(_distributedInterest, newTotalSupply, interestFromTime, interestToTime);
@@ -401,7 +307,9 @@ contract STBT is Ownable, ISTBT {
             totalSupply = _value;
             lastDistributeTime = uint64(block.timestamp);
         } else {
-            totalSupply += _value;
+            uint _totalSupply = totalSupply + _value;
+            require(_totalSupply < uint(getLatestReserve()), "STBT: EXCEED_RESERVE");
+            totalSupply = _totalSupply;
         }
         _mintSharesWithCheck(_tokenHolder, sharesDelta);
         _value = getAmountByShares(sharesDelta);
