@@ -3,12 +3,15 @@ pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/structs/EnumerableMap.sol";
 
 import "./interfaces/ISTBT.sol";
 import "./interfaces/IStbtTimelockController.sol";
 
 contract Minter is Ownable {
+	using SafeERC20 for IERC20;
+
 	using EnumerableMap for EnumerableMap.AddressToUintMap;
 
 	struct DepositConfig {
@@ -130,7 +133,7 @@ contract Minter is Ownable {
 		uint proposeAmount = depositAmount*(UNIT-feeRate)/UNIT;
 		proposeAmount = config.needDivAdjust? proposeAmount / config.adjustUnit : proposeAmount * config.adjustUnit;
 		require(proposeAmount >= minProposedAmount, "MINTER: PROPOSE_AMOUNT_TOO_SMALL");
-		IERC20(token).transferFrom(msg.sender, receiver, depositAmount);
+		IERC20(token).safeTransferFrom(msg.sender, receiver, depositAmount);
 		bytes memory data = abi.encodeWithSignature("issue(address,uint256,bytes)",
 							    msg.sender, proposeAmount, extraData);
 		uint64 _nonceForMint = nonceForMint;
@@ -148,7 +151,7 @@ contract Minter is Ownable {
 		RedeemConfig memory config = redeemConfigMap[token];
 		require(config.minimumRedeemAmount != 0 &&
 			amount >= config.minimumRedeemAmount, "MINTER: REDEEM_AMOUNT_TOO_SMALL");
-		IERC20(targetContract).transferFrom(msg.sender, poolAccount, amount);
+		IERC20(targetContract).safeTransferFrom(msg.sender, poolAccount, amount);
 		bytes memory data = abi.encodeWithSignature("redeemFrom(address,uint256,bytes)",
 							    poolAccount, amount, extraData);
 		uint adjusted = config.needDivAdjust? amount / config.adjustUnit : amount * config.adjustUnit;
@@ -171,13 +174,13 @@ contract Minter is Ownable {
 		address target = redeemTargetMap[nonce];
 		require(target != address(0), "MINTER: NULL_TARGET");
 		delete redeemTargetMap[nonce];
-		IERC20(token).transfer(target, amount);
+		IERC20(token).safeTransfer(target, amount);
 		emit Settle(target, token, nonce, amount, redeemTxId, redeemServiceFeeRate, executionPrice);
 	}
 
 	// the rescue ETH or ERC20 tokens which were accidentally sent to this contract
 	function rescue(address token, address receiver, uint amount) onlyOwner external {
 		require(virtualCountOfRedeemSettled == nonceForRedeem, "MINTER: PENDING_REDEEM");
-		IERC20(token).transfer(receiver, amount);
+		IERC20(token).safeTransfer(receiver, amount);
 	}
 }
