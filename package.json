@@ -7,5 +7,9 @@
     "ethers-eip712": "^0.2.0",
     "hardhat": "^2.12.4",
     "solidity-coverage": "^0.8.2"
+  },
+  "dependencies": {
+    "@chainlink/contracts": "^0.6.1",
+    "@arbitrum/nitro-contracts": "^1.0.2"
   }
 }
