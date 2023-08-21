@@ -37,7 +37,7 @@ contract STBTv2 is Ownable, ISTBT {
     // doc name => doc name index in docNames
     mapping(bytes32 => uint256) public docIndexes;
 
-    AggregatorV3Interface internal reserveFeed;
+    AggregatorV3Interface internal immutable reserveFeed;
 
     // EIP-1066 status code
     uint8 private constant Success = 0x01;
@@ -58,6 +58,10 @@ contract STBTv2 is Ownable, ISTBT {
     modifier onlyModerator() {
         require(msg.sender == moderator, 'STBT: NOT_MODERATOR');
         _;
+    }
+
+    constructor(address addr) {
+        reserveFeed = AggregatorV3Interface(addr);
     }
 
     function setIssuer(address _issuer) public onlyOwner {
@@ -82,10 +86,6 @@ contract STBTv2 is Ownable, ISTBT {
 
     function setPermission(address addr, Permission calldata permission) public onlyModerator {
         permissions[addr] = permission;
-    }
-
-    function setReserveFeed(address addr) public onlyOwner {
-	reserveFeed = AggregatorV3Interface(addr);
     }
 
     /**
@@ -258,7 +258,7 @@ contract STBTv2 is Ownable, ISTBT {
             require(oldTotalSupply * maxDistributeRatio >= uint(-_distributedInterest) * (10 ** 18), 'STBT: MAX_DISTRIBUTE_RATIO_EXCEEDED');
             newTotalSupply = oldTotalSupply - uint(-_distributedInterest);
         }
-        require(newTotalSupply < uint(getLatestReserve()), "STBT: EXCEED_RESERVE");
+        require(newTotalSupply <= uint(getLatestReserve()), "STBT: EXCEED_RESERVE");
         totalSupply = newTotalSupply;
         require(lastDistributeTime + minDistributeInterval < block.timestamp, 'STBT: MIN_DISTRIBUTE_INTERVAL_VIOLATED');
         emit InterestsDistributed(_distributedInterest, newTotalSupply, interestFromTime, interestToTime);
@@ -308,7 +308,7 @@ contract STBTv2 is Ownable, ISTBT {
             lastDistributeTime = uint64(block.timestamp);
         } else {
             uint _totalSupply = totalSupply + _value;
-            require(_totalSupply < uint(getLatestReserve()), "STBT: EXCEED_RESERVE");
+            require(_totalSupply <= uint(getLatestReserve()), "STBT: EXCEED_RESERVE");
             totalSupply = _totalSupply;
         }
         _mintSharesWithCheck(_tokenHolder, sharesDelta);
