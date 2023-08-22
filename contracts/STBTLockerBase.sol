@@ -6,6 +6,9 @@ import "./interfaces/ISTBT.sol";
 contract STBTLockerBase {
     uint public totalSentToGuest;
     uint public totalReceivedFromGuest;
+    uint public lastWSTBTPrice;
+    uint constant private MIN_DIFF = 10**4;
+    uint constant private UNIT = 10**18;
 
     address immutable public stbtAddress;
 
@@ -13,9 +16,13 @@ contract STBTLockerBase {
         stbtAddress = _stbtAddress;
     }
 
-    function _ccRebase() internal view returns (bytes memory) {
+    function _ccRebase() internal returns (bytes memory) {
         uint totalSupply = ISTBT(stbtAddress).totalSupply();
         uint totalShares = ISTBT(stbtAddress).totalShares();
+        uint wstbtPrice = totalSupply * UNIT / totalShares;
+        uint _last = lastWSTBTPrice;
+        require(wstbtPrice + MIN_DIFF < _last || _last + MIN_DIFF < wstbtPrice, "CHANGE_TOO_SMALL");
+        lastWSTBTPrice = wstbtPrice;
         return abi.encodeWithSignature("ccRebase(uint256,uint256)", totalSupply, totalShares);
     }
 
@@ -26,10 +33,10 @@ contract STBTLockerBase {
     }
 
     function _ccLock(uint amount) internal returns (bytes memory) {
-        (bool sendAllowed, bool receiveAllowed, uint64 expiryTime) = ISTBT(stbtAddress).permissions(msg.sender);
+        ISTBT STBTContract = ISTBT(stbtAddress);
+        (bool sendAllowed, bool receiveAllowed, uint64 expiryTime) = STBTContract.permissions(msg.sender);
         bool ok = sendAllowed && receiveAllowed && (expiryTime == 0 || expiryTime > block.timestamp);
         require(ok, "NO_PERMISSION");
-        ISTBT STBTContract = ISTBT(stbtAddress);
         uint shares = STBTContract.getSharesByAmount(amount);
         STBTContract.transferFrom(msg.sender, address(this), amount);
         totalSentToGuest += shares;

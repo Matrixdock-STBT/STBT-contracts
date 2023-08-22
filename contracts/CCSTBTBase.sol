@@ -11,20 +11,26 @@ contract CCSTBTBase is STBTBase {
     uint public totalReceivedFromEthereum;
 
 
+    function totalSharesAtEthereum() public view returns (uint) {
+        return totalShares_;
+    }
+
+    function totalSupplyAtEthereum() public view returns (uint) {
+        return totalSupply_;
+    }
+
     function totalShares() public view returns (uint) {
         return totalReceivedFromEthereum - totalSentToEthereum;
     }
 
     function totalSupply() public view returns (uint) {
-        return totalSupply_ * totalShares_ / totalShares();
+        return totalSupply_ * totalShares() / totalShares_;
     }
 
     function setPermission(address addr, Permission calldata permission, uint timestamp) public onlyOwner {
         permissions[addr] = permission;
         permissionSyncTimes[addr] = timestamp;
     }
-
-
 
     function _burnSharesWithCheck(address _account, uint256 _shares) internal override returns (uint) {
         Permission memory perm = permissions[_account];
@@ -43,7 +49,7 @@ contract CCSTBTBase is STBTBase {
         shares[_account] = accountShares - _shares;
 
         emit TransferShares(_account, address(0), _shares);
-	return 0; // return value not used
+        return 0; // return value not used
     }
 
     function _rebase(uint256 newTotalSupply, uint256 newTotalShares) internal {
@@ -67,8 +73,8 @@ contract CCSTBTBase is STBTBase {
     }
     
     function _ccSetPermission(address account, bool s, bool r, uint64 expiryTime,
-			     uint permissionSyncTime) internal {
-        if(permissionSyncTime > permissionSyncTimes[account]) {
+                 uint permissionSyncTime) internal {
+        if(permissionSyncTime >= permissionSyncTimes[account]) {
             permissions[account] = Permission({
                 sendAllowed: s,
                 receiveAllowed: r,
@@ -79,10 +85,10 @@ contract CCSTBTBase is STBTBase {
     }
 
     function _ccIssue(address _recipient, uint256 _shares, uint64 expiryTime, uint permissionSyncTime) internal {
-        if(permissionSyncTime > permissionSyncTimes[_recipient]) {
+        if(permissionSyncTime >= permissionSyncTimes[_recipient]) {
             permissions[_recipient] = Permission(true, true, expiryTime);
             permissionSyncTimes[_recipient] = permissionSyncTime;
-	}
+        }
         Permission memory p = permissions[_recipient];
         bool ok = p.receiveAllowed && (p.expiryTime == 0 || p.expiryTime > block.timestamp);
         if(!ok) {
@@ -105,9 +111,11 @@ contract CCSTBTBase is STBTBase {
         return abi.encodeWithSignature("ccRelease(address,uint256)", msg.sender, sharesDelta);
     }
 
-    function controllerRedeem(address _tokenHolder, uint256 _value, bytes calldata _data, bytes calldata _operatorData) external override {
+    function controllerRedeem(address /*_tokenHolder*/, 
+                              uint256 /*_value*/,
+                              bytes calldata /*_data*/,
+                              bytes calldata /*_operatorData*/) external override pure {
         revert("NOT_IMPLEMENTED");
     }
+
 }
-
-

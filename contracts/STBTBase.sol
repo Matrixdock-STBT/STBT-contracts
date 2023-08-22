@@ -11,8 +11,8 @@ abstract contract STBTBase is IERC20, IERC20Metadata, IERC1644, Ownable {
 
     uint[300] public placeholders;
 
-    uint public totalSupply_;
-    uint public totalShares_;
+    uint internal totalSupply_;
+    uint internal totalShares_;
     mapping(address => uint256) internal shares;
     mapping(address => mapping(address => uint256)) internal allowances;
     mapping(address => Permission) public permissions; // Address-specific transfer permissions
@@ -20,7 +20,6 @@ abstract contract STBTBase is IERC20, IERC20Metadata, IERC1644, Ownable {
     uint64 public lastDistributeTime;
     uint64 public minDistributeInterval;
     uint64 public maxDistributeRatio;
-
 
     // EIP-1066 status code
     uint8 private constant Success = 0x01;
@@ -36,6 +35,7 @@ abstract contract STBTBase is IERC20, IERC20Metadata, IERC1644, Ownable {
     }
 
     function setController(address _controller) public onlyOwner {
+        require(_controller != address(0), "ZERO_ADDRESS");
         controller = _controller;
     }
 

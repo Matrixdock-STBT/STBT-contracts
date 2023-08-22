@@ -35,7 +35,9 @@ contract STBTLocker is STBTLockerBase {
     }
 
     function setGuestTarget(address _guestTarget) onlyController public {
-        guestTarget = _guestTarget;
+        if(guestTarget == address(0)) {
+            guestTarget = _guestTarget;
+        }
     }
 
     function ccRebase(uint maxSubmissionCost, uint maxGas,
