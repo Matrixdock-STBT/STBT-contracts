@@ -10,11 +10,7 @@ contract STBTLockerBase {
     uint constant private MIN_DIFF = 10**4;
     uint constant private UNIT = 10**18;
 
-    address immutable public stbtAddress;
-
-    constructor(address _stbtAddress) {
-        stbtAddress = _stbtAddress;
-    }
+    address public stbtAddress;
 
     function _ccRebase() internal returns (bytes memory) {
         uint totalSupply = ISTBT(stbtAddress).totalSupply();

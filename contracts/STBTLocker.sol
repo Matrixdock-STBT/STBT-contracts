@@ -15,10 +15,10 @@ contract STBTLocker is STBTLockerBase {
 
     event RetryableTicketCreated(uint256 indexed ticketId);
 
-    modifier onlyController() {
-        require(msg.sender == ISTBT(stbtAddress).controller(), 'WSTBT: NOT_CONTROLLER');
-        _;
-    }
+//    modifier onlyController() {
+//        require(msg.sender == ISTBT(stbtAddress).controller(), 'WSTBT: NOT_CONTROLLER');
+//        _;
+//    }
 
     modifier onlyFromGuest() {
         IBridge bridge = inbox.bridge();
@@ -30,37 +30,35 @@ contract STBTLocker is STBTLockerBase {
         _;
     }
 
-    constructor(address _stbtAddress, address _inbox) STBTLockerBase(_stbtAddress) {
+    function initialize(
+        address _stbtAddress, address _inbox, address _guestTarget) public {
+        require(stbtAddress == address(0), "already initialized");
+        stbtAddress = _stbtAddress;
         inbox = IInbox(_inbox);
-    }
-
-    function setGuestTarget(address _guestTarget) onlyController public {
-        if(guestTarget == address(0)) {
-            guestTarget = _guestTarget;
-        }
+        guestTarget = _guestTarget;
     }
 
     function ccRebase(uint maxSubmissionCost, uint maxGas,
-                      uint gasPriceBid) public payable returns (uint) {
+        uint gasPriceBid) public payable returns (uint) {
         bytes memory data = _ccRebase();
         return ccCreateTicket(data, maxSubmissionCost, maxGas, gasPriceBid);
     }
 
     function ccSetPermission(address account, uint maxSubmissionCost, uint maxGas,
-                             uint gasPriceBid) public payable returns (uint) {
+        uint gasPriceBid) public payable returns (uint) {
         bytes memory data = _ccSetPermission(account);
         return ccCreateTicket(data, maxSubmissionCost, maxGas, gasPriceBid);
     }
 
     function ccLock(uint amount, uint maxSubmissionCost, uint maxGas,
-                    uint gasPriceBid) public payable returns (uint) {
+        uint gasPriceBid) public payable returns (uint) {
         bytes memory data = _ccLock(amount);
         return ccCreateTicket(data, maxSubmissionCost, maxGas, gasPriceBid);
     }
 
-    function ccCreateTicket(bytes memory data,uint maxSubmissionCost,
-                            uint maxGas, uint gasPriceBid) internal returns (uint) {
-        uint256 ticketID = inbox.createRetryableTicket{ value: msg.value }(
+    function ccCreateTicket(bytes memory data, uint maxSubmissionCost,
+        uint maxGas, uint gasPriceBid) internal returns (uint) {
+        uint256 ticketID = inbox.createRetryableTicket{value : msg.value}(
             guestTarget,
             0,
             maxSubmissionCost,
@@ -74,7 +72,7 @@ contract STBTLocker is STBTLockerBase {
         emit RetryableTicketCreated(ticketID);
         return ticketID;
     }
-    
+
     function ccRelease(address _recipient, uint256 _shares) onlyFromGuest public {
         _ccRelease(_recipient, _shares);
     }

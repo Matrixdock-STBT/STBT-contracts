@@ -6,17 +6,11 @@ import "./STBTBase.sol";
 contract CCSTBTBase is STBTBase {
     mapping(address => uint) public permissionSyncTimes;
 
-
     uint public totalSentToEthereum;
     uint public totalReceivedFromEthereum;
 
-
-    function totalSharesAtEthereum() public view returns (uint) {
-        return totalShares_;
-    }
-
-    function totalSupplyAtEthereum() public view returns (uint) {
-        return totalSupply_;
+    function getInternalTotalSupplyAndShares() public view returns (uint, uint) {
+        return (totalSupply_, totalShares_);
     }
 
     function totalShares() public view returns (uint) {
@@ -65,13 +59,13 @@ contract CCSTBTBase is STBTBase {
         uint x = newTotalSupply*oldTotalShares;
         uint y = oldTotalSupply*newTotalShares;
         uint unit = 10**18;
-        require(x*(unit-_maxRatio) <= y*unit, "STBT: MAX_DISTRIBUTE_RATIO_EXCEEDED");
+        require(x*unit <= y*(unit+_maxRatio), "STBT: MAX_DISTRIBUTE_RATIO_EXCEEDED");
         require(y*unit <= x*(unit+_maxRatio), "STBT: MAX_DISTRIBUTE_RATIO_EXCEEDED");
         require(_lastTime + _minInterval < block.timestamp, 'STBT: MIN_DISTRIBUTE_INTERVAL_VIOLATED');
         lastDistributeTime = uint64(block.timestamp);
         _rebase(newTotalSupply, newTotalShares);
     }
-    
+
     function _ccSetPermission(address account, bool s, bool r, uint64 expiryTime,
                  uint permissionSyncTime) internal {
         if(permissionSyncTime >= permissionSyncTimes[account]) {
@@ -111,11 +105,10 @@ contract CCSTBTBase is STBTBase {
         return abi.encodeWithSignature("ccRelease(address,uint256)", msg.sender, sharesDelta);
     }
 
-    function controllerRedeem(address /*_tokenHolder*/, 
+    function controllerRedeem(address /*_tokenHolder*/,
                               uint256 /*_value*/,
                               bytes calldata /*_data*/,
                               bytes calldata /*_operatorData*/) external override pure {
         revert("NOT_IMPLEMENTED");
     }
-
 }
