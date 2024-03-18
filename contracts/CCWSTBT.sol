@@ -13,7 +13,7 @@ contract CCWSTBT is ERC20Permit, Ownable {
 
     uint128 public priceToSTBT;
     uint64 public priceToSTBTUpdateTime;
-    bool public sendEnanbled;
+    bool public sendEnabled;
 
     event ControllerTransfer(
         address _controller,
@@ -60,8 +60,8 @@ contract CCWSTBT is ERC20Permit, Ownable {
         localForbidden[account] = b;
     }
 
-    function setSendEnalbed(bool b) public onlyOwner {
-        sendEnanbled = b;
+    function setSendEnabled(bool b) public onlyOwner {
+        sendEnabled = b;
     }
 
     function transfer(address _recipient, uint256 _amount) public override returns (bool) {
@@ -111,7 +111,7 @@ contract CCWSTBT is ERC20Permit, Ownable {
         receiverAndPermission = (receiverAndPermission<<8)|(p.receiveAllowed? 1 : 0);
         receiverAndPermission = (receiverAndPermission<<64)|uint(p.expiryTime);
         (uint _priceToSTBT, uint _priceToSTBTUpdateTime, bool _sendEnanbled) = 
-                  (priceToSTBT, priceToSTBTUpdateTime, sendEnanbled);
+                  (priceToSTBT, priceToSTBTUpdateTime, sendEnabled);
         uint priceAndUpdateTime = (_priceToSTBT<<64) | _priceToSTBTUpdateTime;
         require(_sendEnanbled, "CCWSTBT: SEND_DISABLED");
         return abi.encode(value, receiverAndPermission, priceAndUpdateTime);

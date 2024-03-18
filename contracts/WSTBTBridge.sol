@@ -7,7 +7,7 @@ contract WSTBTBridge is Ownable {
     address immutable public stbtAddress; // = 0x530824DA86689C9C17CdC2871Ff29B058345b44a;
     address immutable public wstbtAddress;
     address public messager;
-    bool public sendEnanbled;
+    bool public sendEnabled;
 
     modifier onlyMessager() {
         require(msg.sender == messager, 'CCWSTBT: NOT_MESSAGER');
@@ -23,12 +23,12 @@ contract WSTBTBridge is Ownable {
         messager = _messager;
     }
 
-    function setSendEnalbed(bool b) public onlyOwner {
-        sendEnanbled = b;
+    function setSendEnabled(bool b) public onlyOwner {
+        sendEnabled = b;
     }
 
     function ccSend(address sender, address receiver, uint256 value) public onlyMessager returns (bytes memory message) {
-        require(sendEnanbled, "WSTBTBridge: SEND_DISABLED");
+        require(sendEnabled, "WSTBTBridge: SEND_DISABLED");
         
         (bool sendAllowed, bool receiveAllowed, uint64 expiryTime) = ISTBT(stbtAddress).permissions(receiver);
         if(value != 0) {
