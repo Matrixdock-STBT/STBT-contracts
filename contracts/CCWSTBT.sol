@@ -100,21 +100,13 @@ contract CCWSTBT is ERC20Permit, Ownable {
         if(value != 0) {
             _checkReceivePermission(receiver);
             _burn(sender, value);
+            require(!localForbidden[sender], "forbidden");
         }
         return getCcSendData(receiver, value);
     }
 
-    function getCcSendData(address receiver, uint256 value) public view returns (bytes memory message) {
-        Permission memory p = permissions[receiver];
-        uint receiverAndPermission = uint(uint160(receiver));
-        receiverAndPermission = (receiverAndPermission<<8)|(p.sendAllowed? 1 : 0);
-        receiverAndPermission = (receiverAndPermission<<8)|(p.receiveAllowed? 1 : 0);
-        receiverAndPermission = (receiverAndPermission<<64)|uint(p.expiryTime);
-        (uint _priceToSTBT, uint _priceToSTBTUpdateTime, bool _sendEnanbled) = 
-                  (priceToSTBT, priceToSTBTUpdateTime, sendEnabled);
-        uint priceAndUpdateTime = (_priceToSTBT<<64) | _priceToSTBTUpdateTime;
-        require(_sendEnanbled, "CCWSTBT: SEND_DISABLED");
-        return abi.encode(value, receiverAndPermission, priceAndUpdateTime);
+    function getCcSendData(address receiver, uint256 value) public pure returns (bytes memory message) {
+        return abi.encode(receiver, value);
     }
 
     function ccReceive(bytes calldata message) public onlyMessager {
