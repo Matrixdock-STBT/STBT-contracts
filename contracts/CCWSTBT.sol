@@ -67,14 +67,14 @@ contract CCWSTBT is ERC20Permit, Ownable {
     function transfer(address _recipient, uint256 _amount) public override returns (bool) {
         _checkSendPermission(msg.sender);
         _checkReceivePermission(_recipient);
-        require(localForbidden[_recipient], "forbidden");
+        require(!localForbidden[msg.sender] && !localForbidden[_recipient], "forbidden");
         return super.transfer(_recipient, _amount);
     }
 
     function transferFrom(address _sender, address _recipient, uint256 _amount) public override returns (bool) {
         _checkSendPermission(_sender);
         _checkReceivePermission(_recipient);
-        require(localForbidden[_recipient], "forbidden");
+        require(!localForbidden[_sender] && !localForbidden[_recipient], "forbidden");
         return super.transferFrom(_sender, _recipient, _amount);
     }
 
@@ -130,7 +130,7 @@ contract CCWSTBT is ERC20Permit, Ownable {
         
         if(value != 0) {
             if(localForbidden[receiver]) {
-                receiver = controller;
+                receiver = owner();
             }
             _mint(receiver, value);
         }
