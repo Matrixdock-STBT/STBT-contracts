@@ -2,8 +2,9 @@
 pragma solidity ^0.8.0;
 
 import "./interfaces/ISTBT.sol";
+import "./CCWSTBTMessager.sol";
 
-contract WSTBTBridge is Ownable {
+contract WSTBTBridge is Ownable, ICCIPClient {
     address immutable public stbtAddress; // = 0x530824DA86689C9C17CdC2871Ff29B058345b44a;
     address immutable public wstbtAddress;
     address public messager;
@@ -29,14 +30,14 @@ contract WSTBTBridge is Ownable {
 
     function ccSend(address sender, address receiver, uint256 value) public onlyMessager returns (bytes memory message) {
         require(sendEnabled, "WSTBTBridge: SEND_DISABLED");
-        
+
         (bool sendAllowed, bool receiveAllowed, uint64 expiryTime) = ISTBT(stbtAddress).permissions(receiver);
         if(value != 0) {
             require(receiveAllowed, 'WSTBTBridge: NO_RECEIVE_PERMISSION');
             require(expiryTime == 0 || expiryTime > block.timestamp, 'WSTBTBridge: RECEIVE_PERMISSION_EXPIRED');
             IERC20(wstbtAddress).transferFrom(sender, address(this), value);
         }
-        
+
         return _getCcSendData(receiver, value, sendAllowed, receiveAllowed, expiryTime);
     }
 
@@ -57,11 +58,11 @@ contract WSTBTBridge is Ownable {
     }
 
     function ccReceive(bytes calldata message) public onlyMessager {
-        (address receiver, uint value) = 
+        (address receiver, uint value) =
             abi.decode(message, (address, uint));
         if(value == 0) return;
         (/*bool sendAllowed*/, bool receiveAllowed, uint64 expiryTime) = ISTBT(stbtAddress).permissions(receiver);
-        if(!receiveAllowed || expiryTime < block.timestamp) {
+        if(!receiveAllowed || (expiryTime != 0 && expiryTime < block.timestamp)) {
             receiver = owner();
         }
         IERC20(wstbtAddress).transfer(receiver, value);

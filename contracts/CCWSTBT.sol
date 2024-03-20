@@ -4,8 +4,9 @@ pragma solidity ^0.8.0;
 import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Permit.sol";
 
 import "./interfaces/ISTBT.sol";
+import "./CCWSTBTMessager.sol";
 
-contract CCWSTBT is ERC20Permit, Ownable {
+contract CCWSTBT is ERC20Permit, Ownable, ICCIPClient {
     address public messager;
     address public controller;
     mapping(address => Permission) public permissions; // Address-ansfer permissions
@@ -24,7 +25,7 @@ contract CCWSTBT is ERC20Permit, Ownable {
         bytes _operatorData
     );
 
-    constructor(string memory name_, string memory symbol_, address messager_) 
+    constructor(string memory name_, string memory symbol_, address messager_)
                 ERC20Permit(name_) ERC20(name_, symbol_) {
         messager = messager_;
     }
@@ -110,7 +111,7 @@ contract CCWSTBT is ERC20Permit, Ownable {
     }
 
     function ccReceive(bytes calldata message) public onlyMessager {
-        (uint value, uint receiverAndPermission, uint priceAndUpdateTime) = 
+        (uint value, uint receiverAndPermission, uint priceAndUpdateTime) =
             abi.decode(message, (uint, uint, uint));
         Permission memory p;
         p.expiryTime = uint64(receiverAndPermission);
@@ -119,7 +120,7 @@ contract CCWSTBT is ERC20Permit, Ownable {
         address receiver = address(uint160(receiverAndPermission>>80));
         uint64 _priceToSTBTUpdateTime = uint64(priceAndUpdateTime);
         uint128 _priceToSTBT = uint128(priceAndUpdateTime>>64);
-        
+
         if(value != 0) {
             if(localForbidden[receiver]) {
                 receiver = owner();
@@ -129,7 +130,7 @@ contract CCWSTBT is ERC20Permit, Ownable {
         if(!localForbidden[receiver]) {
             permissions[receiver] = p;
         }
-        
+
         if(_priceToSTBTUpdateTime > priceToSTBTUpdateTime) {
             (priceToSTBT, priceToSTBTUpdateTime) = (_priceToSTBT, _priceToSTBTUpdateTime);
         }

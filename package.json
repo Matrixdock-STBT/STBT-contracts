@@ -9,7 +9,8 @@
     "solidity-coverage": "^0.8.2"
   },
   "dependencies": {
+    "@arbitrum/nitro-contracts": "^1.0.2",
     "@chainlink/contracts": "^0.6.1",
-    "@arbitrum/nitro-contracts": "^1.0.2"
+    "@chainlink/contracts-ccip": "^1.2.1"
   }
 }
