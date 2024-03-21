@@ -7,7 +7,7 @@ import {IRouterClient} from "@chainlink/contracts-ccip/src/v0.8/ccip/interfaces/
 import {OwnerIsCreator} from "@chainlink/contracts-ccip/src/v0.8/shared/access/OwnerIsCreator.sol";
 
 interface ICCIPClient {
-    function getCcSendData(address receiver, uint256 value) external view returns (bytes memory message);
+    function getCcSendData(address sender, address receiver, uint256 value) external view returns (bytes memory message);
 
     function ccSend(address sender, address recipient, uint256 value) external returns (bytes memory message);
 
@@ -20,6 +20,8 @@ contract CCWSTBTMessager is CCIPReceiver, OwnerIsCreator {
     mapping(uint64 => mapping(address => bool)) public allowedPeer;
 
     event AllowedPeer(uint64 chainSelector, address messager, bool allowed);
+    event CCReceive(bytes32 indexed messageID, bytes messageData);
+    event CCSend(bytes32 indexed messageID, bytes messageData);
 
     error NotAllowlisted(uint64 chainSelector, address messager);
 
@@ -44,15 +46,17 @@ contract CCWSTBTMessager is CCIPReceiver, OwnerIsCreator {
 
         bytes memory message = abi.decode(any2EvmMessage.data, (bytes));
         ccipClient.ccReceive(message);
+        emit CCReceive(any2EvmMessage.messageId, message);
     }
 
     function calculateFeeAndMessage(
         uint64 destinationChainSelector,
         address messageReceiver,
+        address sender,
         address recipient,
         uint value
     ) public view returns (uint256 fee, Client.EVM2AnyMessage memory evm2AnyMessage) {
-        bytes memory data = ccipClient.getCcSendData(recipient, value);
+        bytes memory data = ccipClient.getCcSendData(sender, recipient, value);
         evm2AnyMessage = Client.EVM2AnyMessage({
         receiver : abi.encode(messageReceiver),
         data : data,
@@ -83,15 +87,16 @@ contract CCWSTBTMessager is CCIPReceiver, OwnerIsCreator {
         feeToken : address(0)
         });
         uint256 fee = IRouterClient(getRouter()).getFee(destinationChainSelector, evm2AnyMessage);
-        require(msg.value >= fee, "Insufficient funds");
+        require(msg.value >= fee, "CCWSTBTMessager: INSUFFICIENT_FUNDS");
         messageId = IRouterClient(getRouter()).ccipSend{value : fee}(
             destinationChainSelector,
             evm2AnyMessage
         );
         if (msg.value - fee > 0) {
             bool success = payable(msg.sender).send(msg.value - fee);
-            require(success, "Transfer failed");
+            require(success, "CCWSTBTMessager: TRANSFER_FAILED");
         }
+        emit CCSend(messageId, data);
         return messageId;
     }
 }

@@ -9,7 +9,7 @@ import "./CCWSTBTMessager.sol";
 contract CCWSTBT is ERC20Permit, Ownable, ICCIPClient {
     address public messager;
     address public controller;
-    mapping(address => Permission) public permissions; // Address-ansfer permissions
+    mapping(address => Permission) public permissions; // Address-transfer permissions
     mapping(address => bool) public localForbidden; // forbidden accounts locally, despite global permission
 
     uint128 public priceToSTBT;
@@ -17,7 +17,6 @@ contract CCWSTBT is ERC20Permit, Ownable, ICCIPClient {
     bool public sendEnabled;
 
     event ControllerTransfer(
-        address _controller,
         address indexed _from,
         address indexed _to,
         uint256 _value,
@@ -68,14 +67,14 @@ contract CCWSTBT is ERC20Permit, Ownable, ICCIPClient {
     function transfer(address _recipient, uint256 _amount) public override returns (bool) {
         _checkSendPermission(msg.sender);
         _checkReceivePermission(_recipient);
-        require(!localForbidden[msg.sender] && !localForbidden[_recipient], "forbidden");
+        require(!localForbidden[msg.sender] && !localForbidden[_recipient], "CCWSTBT: FORBIDDEN");
         return super.transfer(_recipient, _amount);
     }
 
     function transferFrom(address _sender, address _recipient, uint256 _amount) public override returns (bool) {
         _checkSendPermission(_sender);
         _checkReceivePermission(_recipient);
-        require(!localForbidden[_sender] && !localForbidden[_recipient], "forbidden");
+        require(!localForbidden[_sender] && !localForbidden[_recipient], "CCWSTBT: FORBIDDEN");
         return super.transferFrom(_sender, _recipient, _amount);
     }
 
@@ -93,21 +92,21 @@ contract CCWSTBT is ERC20Permit, Ownable, ICCIPClient {
 
     function controllerTransfer(address _from, address _to, uint256 _value, bytes calldata _data, bytes calldata _operatorData) external onlyController {
         _transfer(_from, _to, _value);
-        emit ControllerTransfer(msg.sender, _from, _to, _value, _data, _operatorData);
+        emit ControllerTransfer(_from, _to, _value, _data, _operatorData);
     }
 
-    // a cc-message always contains the value, the receiver, the receiver's permission and price info
+    // a cc-message always contains the value, the receiver, the sender
     function ccSend(address sender, address receiver, uint256 value) public onlyMessager returns (bytes memory message) {
-        if(value != 0) {
-            _checkReceivePermission(receiver);
-            _burn(sender, value);
-            require(!localForbidden[sender], "forbidden");
-        }
-        return getCcSendData(receiver, value);
+        require(value != 0, "CCWSTBT: ZERO_VALUE_FORBIDDEN");
+        require(!localForbidden[sender], "CCWSTBT: SENDER_FORBIDDEN");
+        require(!localForbidden[receiver], "CCWSTBT: RECEIVER_FORBIDDEN");
+        _checkReceivePermission(receiver);
+        _burn(sender, value);
+        return getCcSendData(sender, receiver, value);
     }
 
-    function getCcSendData(address receiver, uint256 value) public pure returns (bytes memory message) {
-        return abi.encode(receiver, value);
+    function getCcSendData(address sender, address receiver, uint256 value) public pure returns (bytes memory message) {
+        return abi.encode(sender, receiver, value);
     }
 
     function ccReceive(bytes calldata message) public onlyMessager {

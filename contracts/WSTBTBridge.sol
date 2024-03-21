@@ -11,7 +11,7 @@ contract WSTBTBridge is Ownable, ICCIPClient {
     bool public sendEnabled;
 
     modifier onlyMessager() {
-        require(msg.sender == messager, 'CCWSTBT: NOT_MESSAGER');
+        require(msg.sender == messager, 'WSTBTBridge: NOT_MESSAGER');
         _;
     }
 
@@ -41,7 +41,7 @@ contract WSTBTBridge is Ownable, ICCIPClient {
         return _getCcSendData(receiver, value, sendAllowed, receiveAllowed, expiryTime);
     }
 
-    function getCcSendData(address receiver, uint256 value) external view returns (bytes memory message) {
+    function getCcSendData(address, address receiver, uint256 value) external view returns (bytes memory message) {
         (bool sendAllowed, bool receiveAllowed, uint64 expiryTime) = ISTBT(stbtAddress).permissions(receiver);
         return _getCcSendData(receiver, value, sendAllowed, receiveAllowed, expiryTime);
     }
@@ -58,12 +58,18 @@ contract WSTBTBridge is Ownable, ICCIPClient {
     }
 
     function ccReceive(bytes calldata message) public onlyMessager {
-        (address receiver, uint value) =
-            abi.decode(message, (address, uint));
+        (address sender, address receiver, uint value) =
+            abi.decode(message, (address, address, uint));
         if(value == 0) return;
         (/*bool sendAllowed*/, bool receiveAllowed, uint64 expiryTime) = ISTBT(stbtAddress).permissions(receiver);
         if(!receiveAllowed || (expiryTime != 0 && expiryTime < block.timestamp)) {
             receiver = owner();
+        } else {
+            bool sendAllowed;
+            (sendAllowed,,expiryTime) = ISTBT(stbtAddress).permissions(sender);
+            if(!sendAllowed || (expiryTime != 0 && expiryTime < block.timestamp)) {
+                receiver = owner();
+            }
         }
         IERC20(wstbtAddress).transfer(receiver, value);
     }

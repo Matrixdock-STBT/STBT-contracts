@@ -78,7 +78,7 @@ describe("CCWSTBT", function () {
         let res = await bridge.connect(messager).ccSend(alice.address, bob.address, 1000);
         expect(await wstbt.balanceOf(bridge.address)).to.equal(1000);
 
-        let msg = await bridge.getCcSendData(bob.address, 1000);
+        let msg = await bridge.getCcSendData(alice.address, bob.address, 1000);
         await ccwstbt.connect(messager).ccReceive(msg);
         expect(await ccwstbt.balanceOf(bob.address)).to.equal(1000);
         expect(await ccwstbt.permissions(bob.address)).to.deep.equal([true,true,0]);
@@ -92,7 +92,7 @@ describe("CCWSTBT", function () {
         res = await bridge.connect(messager).ccSend(alice.address, bob.address, 1000);
         expect(await wstbt.balanceOf(bridge.address)).to.equal(2000);
         expect(await wstbt.balanceOf(alice.address)).to.equal(1000000 - 2000);
-        msg = await bridge.getCcSendData(bob.address, 1000);
+        msg = await bridge.getCcSendData(alice.address, bob.address, 1000);
         await ccwstbt.connect(messager).ccReceive(msg);
         expect(await ccwstbt.balanceOf(owner.address)).to.equal(1000);
         expect(await ccwstbt.permissions(bob.address)).to.deep.equal([true,true,0]);
@@ -101,7 +101,7 @@ describe("CCWSTBT", function () {
 
         // local forbidden cannot send token
         await ccwstbt.connect(controller).setPermission(alice.address, [true, true, 0]);
-        await expect(ccwstbt.connect(bob).transfer(alice.address, 1000)).to.be.revertedWith("forbidden");
+        await expect(ccwstbt.connect(bob).transfer(alice.address, 1000)).to.be.revertedWith("CCWSTBT: FORBIDDEN");
 
         // controller transfer
         await ccwstbt.connect(controller).controllerTransfer(owner.address, bob.address, 1000, '0x','0x');
@@ -109,26 +109,45 @@ describe("CCWSTBT", function () {
         expect(await ccwstbt.balanceOf(bob.address)).to.equal(2000);
 
         // local forbidden cannot ccSend
-        await expect(ccwstbt.connect(messager).ccSend(bob.address, alice.address, 1000)).to.be.revertedWith("forbidden");
+        await expect(ccwstbt.connect(messager).ccSend(bob.address, alice.address, 1000)).to.be.revertedWith("CCWSTBT: SENDER_FORBIDDEN");
 
-        // side to main cc
+        // local forbidden receiver cannot ccSend
+        await ccwstbt.connect(controller).setForbidden(alice.address, true);
         await ccwstbt.connect(controller).setForbidden(bob.address, false);
+        await expect(ccwstbt.connect(messager).ccSend(bob.address, alice.address, 1000)).to.be.revertedWith("CCWSTBT: RECEIVER_FORBIDDEN");
+
+        // side to main cc：sender not sendAllowed
+        await ccwstbt.connect(controller).setForbidden(alice.address, false);
+        await stbt.connect(moderator).setPermission(bob.address, [false, true, 0])
+        await stbt.connect(moderator).setPermission(owner.address, [true, true, 0])
         await ccwstbt.connect(messager).ccSend(bob.address, alice.address, 1000);
         expect(await ccwstbt.balanceOf(bob.address)).to.equal(1000);
-        msg = await ccwstbt.getCcSendData(alice.address, 1000);
+        msg = await ccwstbt.getCcSendData(bob.address, alice.address, 1000);
         await bridge.connect(messager).ccReceive(msg);
-        expect(await wstbt.balanceOf(alice.address)).to.equal(1000000 - 1000);
+        expect(await wstbt.balanceOf(alice.address)).to.equal(1000000 - 2000);
         expect(await wstbt.balanceOf(bridge.address)).to.equal(1000);
+        expect(await wstbt.balanceOf(owner.address)).to.equal(1000);
 
         // side to main, but receiver not has correct permission
+        await stbt.connect(moderator).setPermission(bob.address, [true, true, 0])
         await stbt.connect(moderator).setPermission(alice.address, [true, false, 0])
-        await ccwstbt.connect(messager).ccSend(bob.address, alice.address, 1000);
-        expect(await ccwstbt.balanceOf(bob.address)).to.equal(0);
-        await stbt.connect(moderator).setPermission(owner.address, [true, true, 0])
+        await ccwstbt.connect(messager).ccSend(bob.address, alice.address, 500);
+        expect(await ccwstbt.balanceOf(bob.address)).to.equal(500);
+        msg = await ccwstbt.getCcSendData(bob.address, alice.address, 500);
         await bridge.connect(messager).ccReceive(msg);
-        expect(await wstbt.balanceOf(alice.address)).to.equal(1000000 - 1000);
+        expect(await wstbt.balanceOf(alice.address)).to.equal(1000000 - 2000);
+        expect(await wstbt.balanceOf(bridge.address)).to.equal(500);
+        expect(await wstbt.balanceOf(owner.address)).to.equal(1500);
+
+        // normal send
+        await stbt.connect(moderator).setPermission(alice.address, [true, true, 0])
+        await ccwstbt.connect(messager).ccSend(bob.address, alice.address, 500);
+        expect(await ccwstbt.balanceOf(bob.address)).to.equal(0);
+        msg = await ccwstbt.getCcSendData(bob.address, alice.address, 500);
+        await bridge.connect(messager).ccReceive(msg);
+        expect(await wstbt.balanceOf(alice.address)).to.equal(1000000 - 1500);
         expect(await wstbt.balanceOf(bridge.address)).to.equal(0);
-        expect(await wstbt.balanceOf(owner.address)).to.equal(1000);
+        expect(await wstbt.balanceOf(owner.address)).to.equal(1500);
     });
 });
 
