@@ -67,7 +67,7 @@ contract WSTBTBridge is Ownable, ICCIPClient {
         } else {
             bool sendAllowed;
             (sendAllowed,,expiryTime) = ISTBT(stbtAddress).permissions(sender);
-            if(!sendAllowed || (expiryTime != 0 && expiryTime < block.timestamp)) {
+            if(!sendAllowed || (expiryTime != 0 && expiryTime <= block.timestamp)) {
                 receiver = owner();
             }
         }

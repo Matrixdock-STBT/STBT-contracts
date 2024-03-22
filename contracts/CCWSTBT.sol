@@ -120,14 +120,14 @@ contract CCWSTBT is ERC20Permit, Ownable, ICCIPClient {
         uint64 _priceToSTBTUpdateTime = uint64(priceAndUpdateTime);
         uint128 _priceToSTBT = uint128(priceAndUpdateTime>>64);
 
+        if(!localForbidden[receiver]) {
+            permissions[receiver] = p;
+        }
         if(value != 0) {
             if(localForbidden[receiver]) {
                 receiver = owner();
             }
             _mint(receiver, value);
-        }
-        if(!localForbidden[receiver]) {
-            permissions[receiver] = p;
         }
 
         if(_priceToSTBTUpdateTime > priceToSTBTUpdateTime) {
