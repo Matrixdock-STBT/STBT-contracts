@@ -54,16 +54,15 @@ contract CCWSTBTMessager is CCIPReceiver, OwnerIsCreator {
         address messageReceiver,
         address sender,
         address recipient,
-        uint value
+        uint value,
+        bytes calldata extraArgs
     ) public view returns (uint256 fee, Client.EVM2AnyMessage memory evm2AnyMessage) {
         bytes memory data = ccipClient.getCcSendData(sender, recipient, value);
         evm2AnyMessage = Client.EVM2AnyMessage({
         receiver : abi.encode(messageReceiver),
         data : data,
         tokenAmounts : new Client.EVMTokenAmount[](0),
-        extraArgs : Client._argsToBytes(
-                Client.EVMExtraArgsV1({gasLimit : 200_000})
-            ),
+        extraArgs : extraArgs,
         feeToken : address(0)
         });
         fee = IRouterClient(getRouter()).getFee(destinationChainSelector, evm2AnyMessage);
@@ -73,7 +72,8 @@ contract CCWSTBTMessager is CCIPReceiver, OwnerIsCreator {
         uint64 destinationChainSelector,
         address messageReceiver,
         address recipient,
-        uint value
+        uint value,
+        bytes calldata extraArgs
     ) external payable returns (bytes32 messageId) {
         if (!allowedPeer[destinationChainSelector][messageReceiver]) {
             revert NotAllowlisted(destinationChainSelector, messageReceiver);
@@ -83,7 +83,7 @@ contract CCWSTBTMessager is CCIPReceiver, OwnerIsCreator {
         receiver : abi.encode(messageReceiver),
         data : data,
         tokenAmounts : new Client.EVMTokenAmount[](0),
-        extraArgs : Client._argsToBytes(Client.EVMExtraArgsV1({gasLimit : 200_000})),
+        extraArgs : extraArgs,
         feeToken : address(0)
         });
         uint256 fee = IRouterClient(getRouter()).getFee(destinationChainSelector, evm2AnyMessage);

@@ -60,7 +60,6 @@ contract WSTBTBridge is Ownable, ICCIPClient {
     function ccReceive(bytes calldata message) public onlyMessager {
         (address sender, address receiver, uint value) =
             abi.decode(message, (address, address, uint));
-        if(value == 0) return;
         (/*bool sendAllowed*/, bool receiveAllowed, uint64 expiryTime) = ISTBT(stbtAddress).permissions(receiver);
         if(!receiveAllowed || (expiryTime != 0 && expiryTime < block.timestamp)) {
             receiver = owner();
