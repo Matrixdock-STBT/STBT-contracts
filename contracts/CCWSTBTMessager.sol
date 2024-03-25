@@ -44,9 +44,8 @@ contract CCWSTBTMessager is CCIPReceiver, OwnerIsCreator {
             revert NotAllowlisted(any2EvmMessage.sourceChainSelector, sender);
         }
 
-        bytes memory message = abi.decode(any2EvmMessage.data, (bytes));
-        ccipClient.ccReceive(message);
-        emit CCReceive(any2EvmMessage.messageId, message);
+        ccipClient.ccReceive(any2EvmMessage.data);
+        emit CCReceive(any2EvmMessage.messageId, any2EvmMessage.data);
     }
 
     function calculateFeeAndMessage(
