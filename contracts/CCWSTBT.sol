@@ -24,10 +24,8 @@ contract CCWSTBT is ERC20Permit, Ownable, ICCIPClient {
         bytes _operatorData
     );
 
-    constructor(string memory name_, string memory symbol_, address messager_)
-                ERC20Permit(name_) ERC20(name_, symbol_) {
-        messager = messager_;
-    }
+    constructor(string memory name_, string memory symbol_)
+                ERC20Permit(name_) ERC20(name_, symbol_) {}
 
     modifier onlyController() {
         require(msg.sender == controller, 'CCWSTBT: NOT_CONTROLLER');

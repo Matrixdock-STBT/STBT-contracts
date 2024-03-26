@@ -41,7 +41,8 @@ describe("CCWSTBT", function () {
         await bridge.setMessager(messager.address);
 
         let CCWSTBT = await ethers.getContractFactory("CCWSTBT");
-        let ccwstbt = await CCWSTBT.deploy("CCWSTBT", "CCWSTBT", messager.address);
+        let ccwstbt = await CCWSTBT.deploy("CCWSTBT", "CCWSTBT");
+        await ccwstbt.setMessager(messager.address);
 
         return {stbt, wstbt, bridge, ccwstbt, owner, issuer, controller, moderator, messager, alice, bob, cindy};
     }
