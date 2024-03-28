@@ -95,6 +95,7 @@ contract CCWSTBT is ERC20Permit, Ownable, ICCIPClient {
 
     // a cc-message always contains the value, the receiver, the sender
     function ccSend(address sender, address receiver, uint256 value) public onlyMessager returns (bytes memory message) {
+        require(sendEnabled, "CCWSTBT: SEND_DISABLED");
         require(value != 0, "CCWSTBT: ZERO_VALUE_FORBIDDEN");
         require(!localForbidden[sender], "CCWSTBT: SENDER_FORBIDDEN");
         require(!localForbidden[receiver], "CCWSTBT: RECEIVER_FORBIDDEN");
