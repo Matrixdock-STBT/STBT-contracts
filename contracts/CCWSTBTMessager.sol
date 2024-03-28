@@ -19,7 +19,6 @@ contract CCWSTBTMessager is CCIPReceiver, OwnerIsCreator {
 
     mapping(uint64 => mapping(address => bool)) public allowedPeer;
 
-    event AllowedPeer(uint64 chainSelector, address messager, bool allowed);
     event CCReceive(bytes32 indexed messageID, bytes messageData);
     event CCSend(bytes32 indexed messageID, bytes messageData);
 
